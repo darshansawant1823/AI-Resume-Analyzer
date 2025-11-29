@@ -75,6 +75,15 @@ export interface CandidateAnalysis {
   training_estimate: string; // e.g., "2 weeks to upskill"
   years_experience: number;
   seniority_level: string;
+  // New fields for Comparison
+  breakdown?: {
+    core_skills: number;
+    title_alignment: number;
+    experience_relevance: number;
+    ats_readiness: number;
+    soft_skills: number;
+  };
+  gaps?: string[];
 }
 
 export interface Candidate {
@@ -170,4 +179,41 @@ export interface PracticeFeedback {
   strengths: string[];
   improvements: string[];
   sample_better_response: string;
+}
+
+// --- Interview Chat Types ---
+
+export interface ChatSource {
+  id: string;
+  title: string; // e.g. "JD", "Glassdoor"
+  type: 'jd' | 'resume' | 'web' | 'metadata';
+  snippet?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'ai';
+  content: string;
+  sources?: ChatSource[]; // If AI, list sources used
+  timestamp: number;
+}
+
+export interface ChatRequest {
+  history: ChatMessage[];
+  userQuestion: string;
+  context: {
+    company?: CompanyMetadata | null;
+    companyString?: string;
+    role?: RoleMetadata | null;
+    roleString?: string;
+    jdText?: string;
+    resumeText?: string;
+    researchSources?: { name: string; description: string; provenance: string }[];
+  };
+}
+
+export interface InterviewChatResponse {
+  answerText: string;
+  usedSources: ChatSource[]; // The AI should return which sources it actually referenced
+  suggestedFollowUps: string[];
 }

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import type { MissingItem } from '../types';
 
@@ -22,15 +23,15 @@ export const SuggestionsList: React.FC<{ items: MissingItem[] }> = ({ items }) =
           const style = getStyles(item.importance);
           return (
             <div key={index} className="group flex items-start p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-apple-hover transition-shadow duration-200">
-               <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${style.bg} text-lg`}>
+               <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${style.bg} text-sm sm:text-lg`}>
                    {style.icon}
                </div>
-               <div className="ml-4 flex-1">
+               <div className="ml-3 sm:ml-4 flex-1 min-w-0">
                    <div className="flex justify-between items-start">
-                       <p className="text-[15px] font-medium text-gray-900 leading-snug">{item.suggestion}</p>
-                       <span className={`text-[10px] font-bold uppercase tracking-wider ml-2 ${style.text}`}>{item.importance}</span>
+                       <p className="text-sm sm:text-[15px] font-medium text-gray-900 leading-snug">{item.suggestion}</p>
+                       <span className={`text-[10px] font-bold uppercase tracking-wider ml-2 ${style.text} flex-shrink-0`}>{item.importance}</span>
                    </div>
-                   <p className="text-xs text-gray-400 mt-1 font-medium uppercase tracking-wide">{item.type}</p>
+                   <p className="text-[10px] sm:text-xs text-gray-400 mt-1 font-medium uppercase tracking-wide">{item.type}</p>
                </div>
             </div>
           );

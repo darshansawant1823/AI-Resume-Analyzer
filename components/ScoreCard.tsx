@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface ScoreCardProps {
@@ -19,11 +20,11 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, verdict, explanatio
     const strokeDashoffset = circumference - (score / 100) * circumference;
 
     return (
-        <div className="bg-white rounded-3xl p-8 shadow-apple-card border border-white/50 relative overflow-hidden group hover:shadow-apple-hover transition-shadow duration-300">
-            <div className="flex flex-col sm:flex-row items-center gap-10 relative z-10">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-apple-card border border-white/50 relative overflow-hidden group hover:shadow-apple-hover transition-shadow duration-300">
+            <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-10 relative z-10">
                 
                 {/* Activity Ring */}
-                <div className="relative w-40 h-40 flex-shrink-0">
+                <div className="relative w-32 h-32 sm:w-40 sm:h-40 flex-shrink-0">
                      {/* Background Circle */}
                     <svg className="w-full h-full rotate-[-90deg]" viewBox="0 0 120 120">
                         <circle
@@ -45,7 +46,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, verdict, explanatio
                         />
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className={`text-5xl font-bold tracking-tighter ${theme.text}`}>
+                        <span className={`text-4xl sm:text-5xl font-bold tracking-tighter ${theme.text}`}>
                             {score}
                         </span>
                     </div>
@@ -57,11 +58,11 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, verdict, explanatio
                          <span className="text-xs font-bold uppercase tracking-wide text-gray-500">{verdict}</span>
                     </div>
                     
-                    <h3 className="text-2xl font-bold text-gray-900 leading-tight">
+                    <h3 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">
                         {explanations[0] || "Match Analysis Complete"}
                     </h3>
                     
-                    <p className="text-gray-500 leading-relaxed font-medium">
+                    <p className="text-sm sm:text-base text-gray-500 leading-relaxed font-medium">
                         {explanations.slice(1).join(' ') || "Review the detailed breakdown below to understand your score."}
                     </p>
                 </div>

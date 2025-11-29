@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import type { AnalysisResult } from '../types';
 import { ScoreCard } from './ScoreCard';
@@ -43,16 +44,16 @@ const LoadingState: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center py-32 animate-scale-in">
-      <div className="relative w-16 h-16 mb-6">
+    <div className="flex flex-col items-center justify-center py-20 sm:py-32 animate-scale-in">
+      <div className="relative w-12 h-12 sm:w-16 sm:h-16 mb-6">
         <svg className="animate-spin-slow w-full h-full text-gray-200" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
             <path className="opacity-75 text-system-blue" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
       </div>
-      <h2 className="text-xl font-semibold text-gray-900 tracking-tight mb-2">Analyzing Resume</h2>
-      <p className="text-gray-500 font-medium text-sm">{statusText}...</p>
-      <div className="w-64 h-1 bg-gray-200 rounded-full mt-6 overflow-hidden">
+      <h2 className="text-lg sm:text-xl font-semibold text-gray-900 tracking-tight mb-2">Analyzing Resume</h2>
+      <p className="text-gray-500 font-medium text-xs sm:text-sm">{statusText}...</p>
+      <div className="w-48 sm:w-64 h-1 bg-gray-200 rounded-full mt-6 overflow-hidden">
         <div 
             className="h-full bg-system-blue rounded-full transition-all duration-700 ease-out" 
             style={{ width: `${progress}%` }} 
@@ -63,7 +64,7 @@ const LoadingState: React.FC = () => {
 };
 
 const ErrorState: React.FC<{ error: string, onResumeReset: () => void }> = ({ error, onResumeReset }) => (
-  <div className="max-w-md mx-auto py-20 text-center animate-scale-in">
+  <div className="max-w-md mx-auto py-20 text-center animate-scale-in px-4">
     <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 text-system-red">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
     </div>
@@ -88,13 +89,13 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
   if (!result) return null;
   
   return (
-    <div className="space-y-8 animate-[fadeIn_0.6s_ease-out]">
+    <div className="space-y-6 sm:space-y-8 animate-[fadeIn_0.6s_ease-out]">
       {/* View Switcher - iOS Segmented Control */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div className="bg-gray-200/50 p-1 rounded-xl inline-flex backdrop-blur-md">
+        <div className="bg-gray-200/50 p-1 rounded-xl flex w-full sm:w-auto backdrop-blur-md">
              <button 
                 onClick={() => setView('analysis')}
-                className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
+                className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
                     view === 'analysis' 
                     ? 'bg-white text-gray-900 shadow-sm scale-100' 
                     : 'text-gray-500 hover:text-gray-700 scale-95'
@@ -104,7 +105,7 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
              </button>
              <button 
                 onClick={() => setView('scan')}
-                className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
+                className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
                     view === 'scan' 
                     ? 'bg-white text-gray-900 shadow-sm scale-100' 
                     : 'text-gray-500 hover:text-gray-700 scale-95'
@@ -115,7 +116,7 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
         </div>
         <button
           onClick={onResumeReset}
-          className="text-sm font-medium text-system-blue hover:text-blue-700 transition-colors"
+          className="text-sm font-medium text-system-blue hover:text-blue-700 transition-colors py-2"
         >
           Start New Analysis
         </button>
@@ -124,12 +125,12 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
       {view === 'analysis' ? (
           <>
             <ScoreCard score={result.match_score} verdict={result.verdict} explanations={result.explanations} />
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+                <div className="space-y-6 sm:space-y-8">
                     <SuggestionsList items={result.missing_items_prioritized} />
                     <BreakdownAccordion breakdown={result.breakdown} />
                 </div>
-                <div className="h-full">
+                <div className="h-auto lg:h-full">
                     <ResumeView 
                         customResume={result.custom_resume_text} 
                         diffSummary={result.diff_summary} 

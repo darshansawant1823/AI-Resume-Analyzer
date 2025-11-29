@@ -10,7 +10,9 @@ import type {
   InterviewPredictionResponse,
   PracticeFeedback,
   CompanyMetadata,
-  RoleMetadata
+  RoleMetadata,
+  ChatRequest,
+  InterviewChatResponse
 } from '../types';
 
 const API_KEY = process.env.API_KEY;
@@ -237,7 +239,15 @@ export const analyzeCandidate = async (
         "summary": "string (max 50 words)",
         "training_estimate": "string (e.g. 'None', '2 weeks for X tool', 'Significant upskilling required')",
         "years_experience": number,
-        "seniority_level": "Junior" | "Mid" | "Senior" | "Principal" | "Executive"
+        "seniority_level": "Junior" | "Mid" | "Senior" | "Principal" | "Executive",
+        "breakdown": {
+            "core_skills": number (0-100),
+            "title_alignment": number (0-100),
+            "experience_relevance": number (0-100),
+            "ats_readiness": number (0-100),
+            "soft_skills": number (0-100)
+        },
+        "gaps": ["string (3-5 items of missing skills or experience)"]
     }
   `;
 
@@ -522,6 +532,92 @@ export const analyzePracticeAnswer = async (
     model,
     contents: [{ parts: [{ text: prompt }] }],
     config: { temperature: 0.2, responseMimeType: "application/json" }
+  });
+
+  return JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));
+};
+
+// --- Helper: Extract Text from File (Multimodal) ---
+export const extractTextFromFile = async (
+  file: { base64Data: string; mimeType: string; }
+): Promise<string> => {
+  const prompt = `Extract all text from this document verbatim. Return ONLY the text content. Do not add any markdown or commentary.`;
+  
+  const response = await ai.models.generateContent({
+    model,
+    contents: [{
+      parts: [
+        { inlineData: { data: file.base64Data, mimeType: file.mimeType } },
+        { text: prompt }
+      ]
+    }],
+    config: { temperature: 0.0 }
+  });
+  
+  return response.text.trim();
+};
+
+export const interviewChat = async (request: ChatRequest): Promise<InterviewChatResponse> => {
+  const { history, userQuestion, context } = request;
+
+  // Strict RAG System Prompt
+  const prompt = `
+    SYSTEM:
+    You are a highly intelligent, context-aware Interview Assistant.
+    You MUST answer the user's question using **ONLY** the provided Context Information below.
+    
+    **CORE DIRECTIVE: NO HALLUCINATIONS.**
+    - If the answer is not found in the Job Description (JD), Resume, Company/Role Metadata, or Research Sources, you MUST explicitly state that you have "insufficient data" or "cannot find reliable information" to answer accurately.
+    - Do NOT use general world knowledge to guess specifics about the company culture, benefits, or role unless specifically allowed (e.g. definitions).
+    - If you are asked general questions (e.g., "What is a PM?"), you may use general knowledge but must label it as "General Industry Information".
+    
+    **SOURCE PRIORITY:**
+    1. **Job Description (JD)**: Highest authority for role specifics.
+    2. **Resume**: Highest authority for candidate experience.
+    3. **Research Sources**: Trusted public info (Glassdoor, Company Site).
+    4. **General Role Info**: Lowest priority, use only if nothing else matches.
+
+    **CONTEXT INFORMATION:**
+    [JOB_DESCRIPTION]:
+    ${context.jdText ? context.jdText.substring(0, 8000) : "Not provided"}
+    
+    [RESUME]:
+    ${context.resumeText ? context.resumeText.substring(0, 8000) : "Not provided"}
+    
+    [COMPANY_METADATA]:
+    ${JSON.stringify(context.company || { name: context.companyString || "Not Selected" })}
+    
+    [ROLE_METADATA]:
+    ${JSON.stringify(context.role || { title: context.roleString || "Not Selected" })}
+    
+    [RESEARCH_SOURCES]:
+    ${JSON.stringify(context.researchSources || [])}
+
+    **CONVERSATION HISTORY:**
+    ${history.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).join('\n')}
+    
+    **USER QUESTION:**
+    ${userQuestion}
+
+    **INSTRUCTIONS:**
+    - Answer the user's question directly and concisely.
+    - **CITE YOUR SOURCES**: For every claim, you must identify where it came from.
+    - Populate the "usedSources" array in the JSON response with the specific IDs or Titles of sources used.
+    
+    **OUTPUT JSON SCHEMA:**
+    {
+      "answerText": "string (markdown allowed)",
+      "usedSources": [
+        { "id": "string", "title": "JD" | "Resume" | "Company Metadata" | "Glassdoor" | "LinkedIn" | "General Knowledge", "type": "jd" | "resume" | "web" | "metadata" }
+      ],
+      "suggestedFollowUps": ["string", "string", "string"]
+    }
+  `;
+
+  const response = await ai.models.generateContent({
+    model,
+    contents: [{ parts: [{ text: prompt }] }],
+    config: { temperature: 0.0, responseMimeType: "application/json" }
   });
 
   return JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));

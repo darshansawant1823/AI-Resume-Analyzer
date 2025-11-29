@@ -1,3 +1,4 @@
+
 import React, { useRef } from 'react';
 import { UploadIcon } from './icons/UploadIcon';
 
@@ -41,7 +42,7 @@ export const ResumeUploader: React.FC<ResumeUploaderProps> = ({ file, onFileChan
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={`relative mt-1 flex flex-col justify-center items-center px-6 py-10 border-2 border-dashed rounded-2xl transition-all duration-300 cursor-pointer group ${
+        className={`relative mt-1 flex flex-col justify-center items-center px-4 py-8 sm:px-6 sm:py-10 border-2 border-dashed rounded-2xl transition-all duration-300 cursor-pointer group ${
           file 
             ? 'border-system-blue/30 bg-blue-50/30' 
             : 'border-gray-200 bg-gray-50/30 hover:bg-gray-50 hover:border-gray-300'
@@ -49,19 +50,19 @@ export const ResumeUploader: React.FC<ResumeUploaderProps> = ({ file, onFileChan
       >
         <div className="space-y-3 text-center transition-transform duration-300 group-hover:-translate-y-1">
           {file ? (
-             <div className="w-16 h-16 mx-auto bg-white rounded-xl shadow-sm border border-gray-100 flex items-center justify-center text-system-blue">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+             <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto bg-white rounded-xl shadow-sm border border-gray-100 flex items-center justify-center text-system-blue">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 sm:w-8 sm:h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
              </div>
           ) : (
-             <div className="w-16 h-16 mx-auto bg-white rounded-full shadow-sm flex items-center justify-center text-system-blue group-hover:scale-110 transition-transform">
-                <UploadIcon className="h-7 w-7" />
+             <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto bg-white rounded-full shadow-sm flex items-center justify-center text-system-blue group-hover:scale-110 transition-transform">
+                <UploadIcon className="h-6 w-6 sm:h-7 sm:w-7" />
              </div>
           )}
           
           <div className="text-sm text-gray-600">
             {file ? (
                 <div className="flex flex-col items-center gap-1">
-                    <span className="font-semibold text-gray-900 text-base">{file.name}</span>
+                    <span className="font-semibold text-gray-900 text-sm sm:text-base break-all px-2">{file.name}</span>
                     <span className="text-xs text-gray-400 uppercase font-medium">Ready to Analyze</span>
                 </div>
             ) : (
@@ -76,7 +77,7 @@ export const ResumeUploader: React.FC<ResumeUploaderProps> = ({ file, onFileChan
         {file && (
             <button 
                 onClick={(e) => { e.stopPropagation(); handleRemoveFile(); }} 
-                className="absolute top-3 right-3 p-2 bg-white rounded-full shadow-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                className="absolute top-2 right-2 p-2 bg-white rounded-full shadow-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>

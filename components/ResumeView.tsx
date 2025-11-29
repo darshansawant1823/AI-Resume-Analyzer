@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ClipboardIcon } from './icons/ClipboardIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
@@ -54,28 +55,28 @@ export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummar
   };
 
   return (
-    <div className="bg-white rounded-3xl shadow-apple-card border border-white/60 h-full flex flex-col overflow-hidden">
+    <div className="bg-white rounded-3xl shadow-apple-card border border-white/60 h-[600px] lg:h-full flex flex-col overflow-hidden">
       {/* iOS Toolbar */}
       <div className="border-b border-gray-100 bg-white/50 backdrop-blur-md p-2 flex justify-center sticky top-0 z-10">
-        <div className="bg-gray-100/80 p-1 rounded-lg inline-flex">
+        <div className="bg-gray-100/80 p-1 rounded-lg inline-flex w-full sm:w-auto">
             <button
                 onClick={() => setActiveTab('resume')}
-                className={`px-6 py-1.5 text-xs font-semibold rounded-[6px] transition-all ${activeTab === 'resume' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 sm:flex-none px-3 sm:px-6 py-1.5 text-xs font-semibold rounded-[6px] transition-all whitespace-nowrap ${activeTab === 'resume' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
             >
                 Optimized Resume
             </button>
             <button
                 onClick={() => setActiveTab('changes')}
-                className={`px-6 py-1.5 text-xs font-semibold rounded-[6px] transition-all ${activeTab === 'changes' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 sm:flex-none px-3 sm:px-6 py-1.5 text-xs font-semibold rounded-[6px] transition-all whitespace-nowrap ${activeTab === 'changes' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
             >
-                Cover Letter & Changes
+                Cover Letter
             </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-hidden relative bg-[#F9F9FB]">
         {activeTab === 'resume' && (
-          <div className="h-full flex flex-col p-6 sm:p-8 overflow-y-auto">
+          <div className="h-full flex flex-col p-4 sm:p-8 overflow-y-auto">
              <div className="flex justify-end gap-3 mb-4 sticky top-0 z-20 pointer-events-none">
                 <div className="pointer-events-auto flex gap-2">
                     {isEditing ? (
@@ -100,7 +101,7 @@ export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummar
                 </div>
              </div>
              
-             <div className="bg-white shadow-sm border border-gray-200 min-h-[500px] p-8 rounded-sm mx-auto w-full max-w-2xl relative">
+             <div className="bg-white shadow-sm border border-gray-200 min-h-[500px] p-6 sm:p-8 rounded-sm mx-auto w-full max-w-2xl relative">
                 {isEditing ? (
                     <textarea 
                         value={editedResume} 
@@ -117,10 +118,10 @@ export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummar
         )}
         
         {activeTab === 'changes' && (
-          <div className="h-full overflow-y-auto p-6 sm:p-8 space-y-8">
+          <div className="h-full overflow-y-auto p-4 sm:p-8 space-y-6 sm:space-y-8">
             {coverLetter && (
-                <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                     <div className="flex justify-between items-center mb-6">
+                <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100">
+                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                         <h4 className="text-xl font-bold text-gray-900 font-serif">Cover Letter</h4>
                         <div className="flex gap-2">
                              <button onClick={handleEmailCoverLetter} className="px-4 py-1.5 rounded-full bg-system-blue/10 text-system-blue text-xs font-bold hover:bg-system-blue/20">Email</button>
@@ -137,7 +138,7 @@ export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummar
                 <h4 className="font-bold text-gray-900 mb-4">Summary of Optimization</h4>
                  {coverLine && (
                     <div className="mb-6 p-4 bg-indigo-50/50 rounded-xl border-l-4 border-indigo-400">
-                        <p className="text-indigo-900 italic font-medium">"{coverLine}"</p>
+                        <p className="text-indigo-900 italic font-medium text-sm">"{coverLine}"</p>
                     </div>
                 )}
                 <ul className="space-y-3">
@@ -156,13 +157,13 @@ export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummar
       {/* Full Screen Modal for Resume Editor */}
       {isMaximized && (
         <div className="fixed inset-0 z-[100] bg-white animate-scale-in flex flex-col">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50 backdrop-blur-md">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100 bg-gray-50/50 backdrop-blur-md">
             <div>
               <h2 className="text-lg font-bold text-gray-900">Edit Resume</h2>
               <p className="text-xs text-gray-500">Focus Mode</p>
             </div>
             <div className="flex items-center gap-4">
-               <span className="text-xs font-medium text-gray-400">{editedResume.length} chars</span>
+               <span className="text-xs font-medium text-gray-400 hidden sm:inline">{editedResume.length} chars</span>
                <button
                 onClick={() => setIsMaximized(false)}
                 className="px-6 py-2 bg-gray-900 text-white text-sm font-semibold rounded-full hover:bg-gray-800 transition-colors shadow-lg"
@@ -171,13 +172,13 @@ export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummar
               </button>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto bg-gray-50 p-6 sm:p-10">
-             <div className="max-w-4xl mx-auto bg-white shadow-sm min-h-full p-12">
+          <div className="flex-1 overflow-y-auto bg-gray-50 p-4 sm:p-10">
+             <div className="max-w-4xl mx-auto bg-white shadow-sm min-h-full p-6 sm:p-12">
                 <textarea
                   autoFocus
                   value={editedResume}
                   onChange={(e) => handleMaximizedChange(e.target.value)}
-                  className="w-full h-full min-h-[80vh] resize-none outline-none text-lg leading-relaxed text-gray-800 font-serif"
+                  className="w-full h-full min-h-[80vh] resize-none outline-none text-base sm:text-lg leading-relaxed text-gray-800 font-serif"
                 />
              </div>
           </div>

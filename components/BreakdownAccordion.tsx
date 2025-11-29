@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import type { Breakdown, ScoreDetail } from '../types';
 
@@ -19,13 +20,13 @@ const BreakdownItem: React.FC<BreakdownItemProps> = ({ title, scoreDetail, weigh
   return (
     <div className="border-b border-gray-100 last:border-0">
       <div
-        className="flex items-center justify-between w-full py-4 pr-4 pl-0 cursor-pointer group select-none"
+        className="flex items-center justify-between w-full py-3 sm:py-4 pr-2 sm:pr-4 pl-0 cursor-pointer group select-none"
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="flex-1">
           <div className="flex justify-between items-center mb-2">
-             <span className="text-[15px] font-semibold text-gray-900">{title}</span>
-             <span className="text-sm font-medium text-gray-500">{normalizedScore}%</span>
+             <span className="text-sm sm:text-[15px] font-semibold text-gray-900">{title}</span>
+             <span className="text-xs sm:text-sm font-medium text-gray-500">{normalizedScore}%</span>
           </div>
           <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
             <div className={`h-full rounded-full transition-all duration-500 ${colorClass}`} style={{ width: `${normalizedScore}%` }}></div>
@@ -43,11 +44,11 @@ const BreakdownItem: React.FC<BreakdownItemProps> = ({ title, scoreDetail, weigh
       >
         <ul className="space-y-2 pt-1 pl-1">
            {scoreDetail.details.length > 0 ? scoreDetail.details.map((detail, index) => (
-             <li key={index} className="text-sm text-gray-600 flex items-start gap-2 leading-relaxed">
+             <li key={index} className="text-xs sm:text-sm text-gray-600 flex items-start gap-2 leading-relaxed">
                <span className="block w-1.5 h-1.5 mt-1.5 rounded-full bg-gray-300 flex-shrink-0"></span>
                {detail}
              </li>
-           )) : <li className="text-sm text-gray-400 italic">No details available.</li>}
+           )) : <li className="text-xs sm:text-sm text-gray-400 italic">No details available.</li>}
         </ul>
       </div>
     </div>
