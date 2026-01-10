@@ -54,6 +54,8 @@ export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummar
       setEditedResume(val);
   };
 
+  const isLowMatch = customResume.trim() === "";
+
   return (
     <div className="bg-white rounded-3xl shadow-apple-card border border-white/60 h-[600px] lg:h-full flex flex-col overflow-hidden">
       {/* iOS Toolbar */}
@@ -77,32 +79,46 @@ export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummar
       <div className="flex-1 overflow-hidden relative bg-[#F9F9FB]">
         {activeTab === 'resume' && (
           <div className="h-full flex flex-col p-4 sm:p-8 overflow-y-auto">
-             <div className="flex justify-end gap-3 mb-4 sticky top-0 z-20 pointer-events-none">
-                <div className="pointer-events-auto flex gap-2">
-                    {isEditing ? (
-                        <>
-                            <button 
-                                onClick={() => setIsMaximized(true)} 
-                                className="p-2 bg-white rounded-full shadow-sm text-gray-500 hover:text-system-blue hover:bg-blue-50 border border-gray-100"
-                                title="Maximize"
-                            >
-                                <MaximizeIcon className="w-4 h-4"/>
-                            </button>
-                            <button onClick={handleSave} className="bg-system-blue text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm hover:bg-blue-600">Done</button>
-                            <button onClick={() => setIsEditing(false)} className="bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full text-xs font-semibold hover:bg-gray-300">Cancel</button>
-                        </>
-                    ) : (
-                        <>
-                            <button onClick={() => setIsEditing(true)} className="p-2 bg-white rounded-full shadow-sm text-system-blue hover:bg-blue-50 border border-gray-100"><EditIcon className="w-4 h-4"/></button>
-                            <button onClick={() => handleCopy(editedResume)} className="p-2 bg-white rounded-full shadow-sm text-system-blue hover:bg-blue-50 border border-gray-100"><ClipboardIcon className="w-4 h-4"/></button>
-                            <button onClick={handleDownloadResumePdf} className="p-2 bg-white rounded-full shadow-sm text-system-blue hover:bg-blue-50 border border-gray-100"><DownloadIcon className="w-4 h-4"/></button>
-                        </>
-                    )}
-                </div>
-             </div>
+             {!isLowMatch && (
+               <div className="flex justify-end gap-3 mb-4 sticky top-0 z-20 pointer-events-none">
+                  <div className="pointer-events-auto flex gap-2">
+                      {isEditing ? (
+                          <>
+                              <button 
+                                  onClick={() => setIsMaximized(true)} 
+                                  className="p-2 bg-white rounded-full shadow-sm text-gray-500 hover:text-system-blue hover:bg-blue-50 border border-gray-100"
+                                  title="Maximize"
+                              >
+                                  <MaximizeIcon className="w-4 h-4"/>
+                              </button>
+                              <button onClick={handleSave} className="bg-system-blue text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm hover:bg-blue-600">Done</button>
+                              <button onClick={() => setIsEditing(false)} className="bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full text-xs font-semibold hover:bg-gray-300">Cancel</button>
+                          </>
+                      ) : (
+                          <>
+                              <button onClick={() => setIsEditing(true)} className="p-2 bg-white rounded-full shadow-sm text-system-blue hover:bg-blue-50 border border-gray-100"><EditIcon className="w-4 h-4"/></button>
+                              <button onClick={() => handleCopy(editedResume)} className="p-2 bg-white rounded-full shadow-sm text-system-blue hover:bg-blue-50 border border-gray-100"><ClipboardIcon className="w-4 h-4"/></button>
+                              <button onClick={handleDownloadResumePdf} className="p-2 bg-white rounded-full shadow-sm text-system-blue hover:bg-blue-50 border border-gray-100"><DownloadIcon className="w-4 h-4"/></button>
+                          </>
+                      )}
+                  </div>
+               </div>
+             )}
              
-             <div className="bg-white shadow-sm border border-gray-200 min-h-[500px] p-6 sm:p-8 rounded-sm mx-auto w-full max-w-2xl relative">
-                {isEditing ? (
+             <div className="bg-white shadow-sm border border-gray-200 min-h-[500px] p-6 sm:p-8 rounded-sm mx-auto w-full max-w-2xl relative flex flex-col">
+                {isLowMatch ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-4 animate-scale-in">
+                        <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center text-system-orange text-3xl">⚠️</div>
+                        <h4 className="text-xl font-bold text-gray-900">Optimization Skipped</h4>
+                        <p className="text-sm text-gray-500 max-w-sm leading-relaxed">
+                            Your resume match score is too low for a meaningful rewrite. 
+                            To ensure 100% accuracy, our AI refuses to fabricate experience or skills that aren't in your source document.
+                        </p>
+                        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider pt-4 border-t border-gray-100 w-full">
+                            Zero Hallucination Policy Active
+                        </div>
+                    </div>
+                ) : isEditing ? (
                     <textarea 
                         value={editedResume} 
                         onChange={(e) => setEditedResume(e.target.value)}
@@ -119,37 +135,45 @@ export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummar
         
         {activeTab === 'changes' && (
           <div className="h-full overflow-y-auto p-4 sm:p-8 space-y-6 sm:space-y-8">
-            {coverLetter && (
-                <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100">
-                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                        <h4 className="text-xl font-bold text-gray-900 font-serif">Cover Letter</h4>
-                        <div className="flex gap-2">
-                             <button onClick={handleEmailCoverLetter} className="px-4 py-1.5 rounded-full bg-system-blue/10 text-system-blue text-xs font-bold hover:bg-system-blue/20">Email</button>
-                             <button onClick={handleDownloadCoverLetterPdf} className="px-4 py-1.5 rounded-full bg-system-blue/10 text-system-blue text-xs font-bold hover:bg-system-blue/20">Download PDF</button>
-                        </div>
-                     </div>
-                     <div className="prose prose-sm max-w-none text-gray-700 font-serif leading-7">
-                        {coverLetter}
-                     </div>
+            {isLowMatch ? (
+                <div className="bg-white p-10 rounded-2xl shadow-sm border border-gray-100 text-center animate-scale-in">
+                    <p className="text-gray-400 font-medium italic">Cover letter generation skipped due to low match profile.</p>
                 </div>
-            )}
-            
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h4 className="font-bold text-gray-900 mb-4">Summary of Optimization</h4>
-                 {coverLine && (
-                    <div className="mb-6 p-4 bg-indigo-50/50 rounded-xl border-l-4 border-indigo-400">
-                        <p className="text-indigo-900 italic font-medium text-sm">"{coverLine}"</p>
+            ) : (
+                <>
+                    {coverLetter && (
+                        <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100">
+                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                                <h4 className="text-xl font-bold text-gray-900 font-serif">Cover Letter</h4>
+                                <div className="flex gap-2">
+                                     <button onClick={handleEmailCoverLetter} className="px-4 py-1.5 rounded-full bg-system-blue/10 text-system-blue text-xs font-bold hover:bg-system-blue/20">Email</button>
+                                     <button onClick={handleDownloadCoverLetterPdf} className="px-4 py-1.5 rounded-full bg-system-blue/10 text-system-blue text-xs font-bold hover:bg-system-blue/20">Download PDF</button>
+                                </div>
+                             </div>
+                             <div className="prose prose-sm max-w-none text-gray-700 font-serif leading-7">
+                                {coverLetter}
+                             </div>
+                        </div>
+                    )}
+                    
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                        <h4 className="font-bold text-gray-900 mb-4">Summary of Optimization</h4>
+                         {coverLine && (
+                            <div className="mb-6 p-4 bg-indigo-50/50 rounded-xl border-l-4 border-indigo-400">
+                                <p className="text-indigo-900 italic font-medium text-sm">"{coverLine}"</p>
+                            </div>
+                        )}
+                        <ul className="space-y-3">
+                            {diffSummary.map((item, i) => (
+                                <li key={i} className="flex gap-3 text-sm text-gray-600">
+                                    <span className="text-system-green font-bold">✓</span>
+                                    {item}
+                                </li>
+                            ))}
+                        </ul>
                     </div>
-                )}
-                <ul className="space-y-3">
-                    {diffSummary.map((item, i) => (
-                        <li key={i} className="flex gap-3 text-sm text-gray-600">
-                            <span className="text-system-green font-bold">✓</span>
-                            {item}
-                        </li>
-                    ))}
-                </ul>
-            </div>
+                </>
+            )}
           </div>
         )}
       </div>
