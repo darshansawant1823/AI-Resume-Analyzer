@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { MaximizeIcon } from './icons/MaximizeIcon';
+import { TrashIcon } from './icons/TrashIcon';
 
 interface JobDescriptionInputProps {
   value: string;
@@ -24,14 +25,25 @@ export const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({ value,
           className="w-full h-40 sm:h-48 p-4 bg-gray-50/50 hover:bg-gray-50 border-0 rounded-2xl text-gray-900 placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-system-blue/20 transition-all duration-200 resize-none text-sm sm:text-[15px] leading-relaxed shadow-inner pr-12"
         />
         
-        {/* Maximize Button */}
-        <button
-          onClick={() => setIsMaximized(true)}
-          className="absolute top-2 right-2 p-2 text-gray-400 hover:text-system-blue hover:bg-white rounded-lg transition-all opacity-100 sm:opacity-0 group-hover:opacity-100"
-          title="Maximize"
-        >
-          <MaximizeIcon className="w-5 h-5" />
-        </button>
+        {/* Actions */}
+        <div className="absolute top-2 right-2 flex items-center gap-1">
+          {value && (
+             <button
+              onClick={() => onChange('')}
+              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+              title="Clear"
+            >
+              <TrashIcon className="w-5 h-5" />
+            </button>
+          )}
+          <button
+            onClick={() => setIsMaximized(true)}
+            className="p-2 text-gray-400 hover:text-system-blue hover:bg-white rounded-lg transition-all opacity-100 sm:opacity-0 group-hover:opacity-100"
+            title="Maximize"
+          >
+            <MaximizeIcon className="w-5 h-5" />
+          </button>
+        </div>
 
         <div className="absolute bottom-3 right-4 text-xs text-gray-400 font-medium pointer-events-none">
           {value.length > 0 ? `${value.length} chars` : 'Required'}

@@ -500,7 +500,7 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
                 )}
             </div>
 
-            {/* Dropdown Portal logic (same as before) */}
+            {/* Dropdown Portal logic */}
             {showRoleSuggestions && (
                 isMobile ? (
                     createPortal(
@@ -573,7 +573,7 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
           </div>
         </div>
 
-        {/* Checkboxes & Context Summary (Unchanged) */}
+        {/* Checkboxes & Context Summary */}
         <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 mb-4 px-1">
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input type="checkbox" checked={useJD} onChange={e => setUseJD(e.target.checked)} className="w-4 h-4 rounded text-system-blue border-gray-300 focus:ring-system-blue"/>
@@ -597,7 +597,10 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
                  </div>
                  <div className="flex gap-1 ml-auto sm:ml-2">
                     {jdText ? (
-                       <button onClick={() => setActiveContextModal('view-jd')} className="px-2 py-1 bg-white border border-gray-200 rounded text-[10px] font-bold text-gray-600 hover:text-system-blue">View</button>
+                       <>
+                           <button onClick={() => setActiveContextModal('view-jd')} className="px-2 py-1 bg-white border border-gray-200 rounded text-[10px] font-bold text-gray-600 hover:text-system-blue">View</button>
+                           <button onClick={handleClearJD} className="px-2 py-1 bg-white border border-gray-200 rounded text-[10px] font-bold text-red-500 hover:bg-red-50 hover:border-red-100">Clear</button>
+                       </>
                     ) : (
                        <button onClick={handleAddJD} className="px-2 py-1 bg-system-blue text-white rounded text-[10px] font-bold hover:bg-blue-600 shadow-sm flex items-center gap-1"><PlusIcon/> Add</button>
                     )}
@@ -614,7 +617,10 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
                  </div>
                  <div className="flex gap-1 ml-auto sm:ml-2">
                     {resumeText ? (
-                       <button onClick={() => setActiveContextModal('view-resume')} className="px-2 py-1 bg-white border border-gray-200 rounded text-[10px] font-bold text-gray-600 hover:text-system-blue">View</button>
+                       <>
+                           <button onClick={() => setActiveContextModal('view-resume')} className="px-2 py-1 bg-white border border-gray-200 rounded text-[10px] font-bold text-gray-600 hover:text-system-blue">View</button>
+                           <button onClick={handleClearResume} className="px-2 py-1 bg-white border border-gray-200 rounded text-[10px] font-bold text-red-500 hover:bg-red-50 hover:border-red-100">Clear</button>
+                       </>
                     ) : (
                        <button onClick={() => setActiveContextModal('resume')} className="px-2 py-1 bg-system-blue text-white rounded text-[10px] font-bold hover:bg-blue-600 shadow-sm flex items-center gap-1"><PlusIcon/> Upload</button>
                     )}

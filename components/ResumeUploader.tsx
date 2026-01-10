@@ -1,6 +1,7 @@
 
 import React, { useRef } from 'react';
 import { UploadIcon } from './icons/UploadIcon';
+import { TrashIcon } from './icons/TrashIcon';
 
 interface ResumeUploaderProps {
   file: File | null;
@@ -78,8 +79,9 @@ export const ResumeUploader: React.FC<ResumeUploaderProps> = ({ file, onFileChan
             <button 
                 onClick={(e) => { e.stopPropagation(); handleRemoveFile(); }} 
                 className="absolute top-2 right-2 p-2 bg-white rounded-full shadow-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                title="Clear Resume"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <TrashIcon className="w-4 h-4" />
             </button>
         )}
 
