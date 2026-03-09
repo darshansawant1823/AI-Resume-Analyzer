@@ -1,12 +1,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import type { Candidate, CandidateAnalysis, JDAnalysis, InterviewScript, CrossDomainAnalysis, TransferDomain } from '../types';
-import { analyzeCandidate, analyzeJobDescription, simplifyResume, generateInterviewScript, performCrossDomainAnalysis } from '../services/geminiService';
+// Add extractTextFromFile to the imported services
+import { analyzeCandidate, analyzeJobDescription, simplifyResume, generateInterviewScript, performCrossDomainAnalysis, extractTextFromFile } from '../services/geminiService';
 import { UploadIcon } from './icons/UploadIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { ClipboardIcon } from './icons/ClipboardIcon';
 import { MaximizeIcon } from './icons/MaximizeIcon';
 import { CompareProfiles } from './CompareProfiles';
+import { RecruiterChatView } from './RecruiterChatView';
 
 interface RecruiterDashboardProps {}
 
@@ -22,13 +24,13 @@ const DONUT_COLORS = [
 
 const CONFIDENCE_COLORS = {
   high: { bg: 'bg-[#E8F8F0]', text: 'text-[#2DBE7E]', border: 'border-[#2DBE7E]' },
-  medium: { bg: 'bg-[#FFF6E5]', text: 'text-[#F5A623]', border: 'border-[#F5A623]' },
+  medium: { bg: 'bg-[#FFF6E5]', text: 'text-[#F5A623]', border: 'border-[#2DBE7E]' },
   low: { bg: 'bg-gray-100', text: 'text-gray-400', border: 'border-gray-200' }
 };
 
 export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'jd-intel'>('dashboard');
-  const [viewMode, setViewMode] = useState<'list' | 'compare'>('list'); // New view mode state
+  const [viewMode, setViewMode] = useState<'list' | 'compare' | 'chat'>('list'); // Added 'chat'
   const [jobDescription, setJobDescription] = useState('');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
@@ -81,15 +83,18 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
       
       try {
            let payload;
+           let extractedText = "";
            if (candidate.file.type.startsWith('image/') || candidate.file.type === 'application/pdf') {
              const { base64Data, mimeType } = await fileToBase64(candidate.file);
              payload = { base64Data, mimeType };
+             extractedText = await extractTextFromFile(payload);
            } else {
-             const text = await candidate.file.text();
-             payload = { text };
+             extractedText = await candidate.file.text();
+             payload = { text: extractedText };
            }
            const analysis = await analyzeCandidate(jd, payload);
-           setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, status: 'analyzed', analysis } : c));
+           // Store the extracted text in candidate for chat context
+           setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, status: 'analyzed', analysis, extractedText } : c));
       } catch (err) {
            console.error(`Analysis failed for candidate ${candidate.id}:`, err);
            setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, status: 'error' } : c));
@@ -272,6 +277,10 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
       setViewMode('compare');
   };
 
+  const handleChat = () => {
+      setViewMode('chat');
+  };
+
   const getEmailDraft = () => {
     const selectedEmails = sortedCandidates
         .filter(c => selectedIds.has(c.id))
@@ -300,6 +309,8 @@ Hiring Team`;
 
   const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
   const { subject, body, selectedEmails, gmailLink } = getEmailDraft();
+
+  // Removed redundant local extractTextFromFile definition which was causing 'ai' not found error.
 
   // --- Cross Domain Visualization Helper ---
   const renderCrossDomainCard = () => {
@@ -468,6 +479,19 @@ Hiring Team`;
       );
   }
 
+  if (viewMode === 'chat') {
+      const selectedCandidates = sortedCandidates
+        .filter(c => selectedIds.has(c.id));
+      
+      return (
+          <RecruiterChatView 
+            candidates={selectedCandidates}
+            jdText={jobDescription}
+            onBack={() => setViewMode('list')}
+          />
+      );
+  }
+
   return (
     <div className="max-w-[1400px] mx-auto p-4 sm:p-8 animate-scale-in relative">
       
@@ -620,6 +644,13 @@ Hiring Team`;
                         className="px-4 py-2 text-sm font-semibold text-gray-400 hover:text-white transition-colors whitespace-nowrap"
                     >
                         Deselect
+                    </button>
+                    <button 
+                        onClick={handleChat}
+                        className="px-5 py-2 bg-white/10 text-white border border-white/20 rounded-xl text-sm font-bold hover:bg-white/20 transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 0 1-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                        Ask me anything
                     </button>
                     <button 
                         onClick={handleCompare}

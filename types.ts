@@ -93,6 +93,7 @@ export interface Candidate {
   status: 'pending' | 'processing' | 'analyzed' | 'error';
   analysis?: CandidateAnalysis;
   crossDomainAnalysis?: CrossDomainAnalysis; // Cache for 24h
+  extractedText?: string; // verbatim text for grounding
 }
 
 export interface JDAnalysis {
