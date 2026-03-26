@@ -1,7 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import { User } from 'firebase/auth';
+import { useRecruiterData } from '../src/hooks/useRecruiterData';
 import type { Candidate, CandidateAnalysis, JDAnalysis, InterviewScript, CrossDomainAnalysis, TransferDomain } from '../types';
 // Add extractTextFromFile to the imported services
+import { ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { analyzeCandidate, analyzeJobDescription, simplifyResume, generateInterviewScript, performCrossDomainAnalysis, extractTextFromFile } from '../services/geminiService';
 import { UploadIcon } from './icons/UploadIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
@@ -10,7 +14,7 @@ import { MaximizeIcon } from './icons/MaximizeIcon';
 import { CompareProfiles } from './CompareProfiles';
 import { RecruiterChatView } from './RecruiterChatView';
 
-interface RecruiterDashboardProps {}
+import { RecruiterScan } from './RecruiterScan';
 
 // UI Constants for Donut Chart
 const DONUT_COLORS = [
@@ -28,11 +32,35 @@ const CONFIDENCE_COLORS = {
   low: { bg: 'bg-gray-100', text: 'text-gray-400', border: 'border-gray-200' }
 };
 
-export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
+interface RecruiterDashboardProps {
+  user: User | null;
+}
+
+export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) => {
+  const { candidates: persistedCandidates, saveCandidate, deleteCandidate, saveJDAnalysis, archiveAllCandidates } = useRecruiterData(user);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'jd-intel'>('dashboard');
-  const [viewMode, setViewMode] = useState<'list' | 'compare' | 'chat'>('list'); // Added 'chat'
+  const [viewMode, setViewMode] = useState<'list' | 'compare' | 'chat' | 'candidate-details'>('list'); 
   const [jobDescription, setJobDescription] = useState('');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+
+  useEffect(() => {
+    const sessionKey = `recruiter_session_archived_${user?.uid}`;
+    if (user && !sessionStorage.getItem(sessionKey)) {
+      archiveAllCandidates().then(() => {
+        sessionStorage.setItem(sessionKey, 'true');
+      });
+    }
+  }, [user?.uid]);
+
+  useEffect(() => {
+    setCandidates(prev => {
+      // Map persisted candidates, preserving File objects from current state if they exist
+      return persistedCandidates.map(pc => {
+        const existing = prev.find(c => c.id === pc.id);
+        return { ...pc, file: existing?.file || pc.file };
+      });
+    });
+  }, [persistedCandidates]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   
   const [jdAnalysis, setJdAnalysis] = useState<JDAnalysis | null>(null);
@@ -42,9 +70,11 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
 
   const [cleanResume, setCleanResume] = useState<string | null>(null);
   const [interviewScript, setInterviewScript] = useState<InterviewScript | null>(null);
-  const [modalTab, setModalTab] = useState<'profile' | 'clean' | 'interview'>('profile');
+  const [modalTab, setModalTab] = useState<'profile' | 'scan' | 'interview'>('profile');
   const [isLoadingModal, setIsLoadingModal] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [showContactPopup, setShowContactPopup] = useState(false);
+  const [contactCandidate, setContactCandidate] = useState<Candidate | null>(null);
 
   // Cross Domain State
   const [isCrossDomainLoading, setIsCrossDomainLoading] = useState(false);
@@ -58,6 +88,9 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
   
   // Toast for Compare Limit
   const [showCompareToast, setShowCompareToast] = useState(false);
+
+  // Delete Confirmation State
+  const [candidateToDelete, setCandidateToDelete] = useState<Candidate | null>(null);
 
   // Track auto-selected candidates to prevent re-selecting after user deselects
   const autoSelectedRef = useRef<Set<string>>(new Set());
@@ -92,12 +125,22 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
              extractedText = await candidate.file.text();
              payload = { text: extractedText };
            }
+
            const analysis = await analyzeCandidate(jd, payload);
            // Store the extracted text in candidate for chat context
-           setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, status: 'analyzed', analysis, extractedText } : c));
+           const updatedCandidate: Candidate = { 
+             ...candidate, 
+             status: 'analyzed' as const, 
+             analysis, 
+             extractedText
+           };
+           setCandidates(prev => prev.map(c => c.id === candidate.id ? updatedCandidate : c));
+           await saveCandidate(updatedCandidate);
       } catch (err) {
            console.error(`Analysis failed for candidate ${candidate.id}:`, err);
-           setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, status: 'error' } : c));
+           const errorCandidate = { ...candidate, status: 'error' as const };
+           setCandidates(prev => prev.map(c => c.id === candidate.id ? errorCandidate : c));
+           await saveCandidate(errorCandidate);
       }
   };
 
@@ -112,6 +155,13 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
         status: 'pending'
       }));
       setCandidates(prev => [...prev, ...newCandidates]);
+      
+      // Save pending candidates to Firestore immediately
+      if (user) {
+        for (const candidate of newCandidates) {
+          await saveCandidate(candidate);
+        }
+      }
       
       // Process sequentially to avoid rate limits
       for (const candidate of newCandidates) {
@@ -158,6 +208,9 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
       try {
           const result = await analyzeJobDescription(jobDescription);
           setJdAnalysis(result);
+          if (user) {
+              await saveJDAnalysis(jobDescription, result);
+          }
       } catch (e) { alert("Failed to analyze JD"); } finally { setIsAnalyzingJd(false); }
   }
 
@@ -176,6 +229,8 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
       setModalTab('profile');
       setModalError(null);
       setSelectedDomain(null);
+      setShowContactPopup(false);
+      setViewMode('candidate-details');
   }
 
   const handleLoadCleanResume = async () => {
@@ -191,6 +246,11 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
          } else { const text = await candidate.file.text(); payload = { text }; }
          const result = await simplifyResume(payload);
          setCleanResume(result);
+         
+         // Save to Firestore
+         const updatedCandidate = { ...candidate, cleanResume: result };
+         setCandidates(prev => prev.map(c => c.id === candidate.id ? updatedCandidate : c));
+         await saveCandidate(updatedCandidate);
       } catch (e) {
           setModalError("Failed to simplify resume.");
       } finally { setIsLoadingModal(false); }
@@ -207,6 +267,11 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
       try {
           const result = await generateInterviewScript(jobDescription, candidate.analysis.summary, candidate.analysis.red_flags);
           setInterviewScript(result);
+          
+          // Save to Firestore
+          const updatedCandidate = { ...candidate, interviewScript: result };
+          setCandidates(prev => prev.map(c => c.id === candidate.id ? updatedCandidate : c));
+          await saveCandidate(updatedCandidate);
       } catch(e) {
           console.error("Interview Generation Error:", e);
           setModalError("Failed to generate interview script. Please try again.");
@@ -228,7 +293,9 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = () => {
             payload = { text };
         }
         const result = await performCrossDomainAnalysis(candidate.id, payload);
-        setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, crossDomainAnalysis: result } : c));
+        const updatedCandidate = { ...candidate, crossDomainAnalysis: result };
+        setCandidates(prev => prev.map(c => c.id === candidate.id ? updatedCandidate : c));
+        await saveCandidate(updatedCandidate);
     } catch (e) {
         console.error("Cross Domain Analysis Failed", e);
     } finally {
@@ -422,7 +489,7 @@ Hiring Team`;
                                             <div>
                                                 <h5 className="text-[10px] font-bold uppercase text-gray-400 mb-2">Top Transferable Skills</h5>
                                                 <div className="flex flex-wrap gap-1.5">
-                                                    {domain.primarySkills.map(skill => (
+                                                    {(domain.primarySkills || []).map(skill => (
                                                         <span key={skill} className="px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-700 font-medium shadow-sm">{skill}</span>
                                                     ))}
                                                 </div>
@@ -450,7 +517,7 @@ Hiring Team`;
                                                 </button>
                                             </div>
                                             <ul className="list-disc pl-4 space-y-1">
-                                                {domain.suggestedBullets.map((bullet, idx) => (
+                                                {(domain.suggestedBullets || []).map((bullet, idx) => (
                                                     <li key={idx} className="text-xs text-gray-700 italic">"{bullet}"</li>
                                                 ))}
                                             </ul>
@@ -467,29 +534,316 @@ Hiring Team`;
   };
 
   if (viewMode === 'compare') {
-      const candidatesToCompare = sortedCandidates
-        .filter(c => selectedIds.has(c.id))
-        .slice(0, 3); // Ensure max 3
-
-      return (
-          <CompareProfiles 
-            candidates={candidatesToCompare} 
-            onBack={() => setViewMode('list')} 
-          />
-      );
+    const selectedCandidates = persistedCandidates.filter(c => selectedIds.has(c.id));
+    return (
+      <CompareProfiles 
+        candidates={selectedCandidates} 
+        jdText={jobDescription}
+        onBack={() => setViewMode('list')} 
+      />
+    );
   }
 
   if (viewMode === 'chat') {
-      const selectedCandidates = sortedCandidates
-        .filter(c => selectedIds.has(c.id));
-      
-      return (
-          <RecruiterChatView 
-            candidates={selectedCandidates}
-            jdText={jobDescription}
-            onBack={() => setViewMode('list')}
-          />
-      );
+    const selectedCandidates = persistedCandidates.filter(c => selectedIds.has(c.id));
+    return (
+      <RecruiterChatView 
+        candidates={selectedCandidates} 
+        jdText={jobDescription}
+        onBack={() => setViewMode('list')} 
+      />
+    );
+  }
+
+  if (viewMode === 'candidate-details' && selectedCandidate && selectedCandidate.analysis) {
+    return (
+      <div className="min-h-screen bg-[#F9F9FB] animate-scale-in flex flex-col">
+        {/* Navigation Header */}
+        <div className="bg-white border-b border-gray-100 px-4 sm:px-8 py-4 flex items-center justify-between sticky top-0 z-50 backdrop-blur-md bg-white/80">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setViewMode('list')}
+              className="p-2 hover:bg-gray-100 rounded-full transition-all text-gray-500 hover:text-gray-900 group"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">{selectedCandidate.name}</h2>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs font-bold px-2 py-0.5 bg-blue-50 text-system-blue rounded-md uppercase tracking-wider">
+                  {selectedCandidate.analysis.seniority_level}
+                </span>
+                <span className="text-gray-400 text-xs sm:text-sm font-medium">
+                  {selectedCandidate.analysis.years_experience} Years Experience
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="hidden sm:flex items-center gap-3">
+             <button 
+                onClick={() => setShowContactPopup(true)}
+                className="px-6 py-2.5 bg-white border border-gray-200 text-gray-900 rounded-full text-sm font-bold hover:bg-gray-50 transition-all shadow-sm"
+             >
+                Contact Candidate
+             </button>
+             <button 
+                onClick={() => setViewMode('list')}
+                className="px-6 py-2.5 bg-gray-900 text-white rounded-full text-sm font-bold hover:bg-black transition-all shadow-lg"
+             >
+                Done
+             </button>
+          </div>
+        </div>
+
+        {/* Contact Popup */}
+        {showContactPopup && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowContactPopup(false)}></div>
+            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md relative z-10 overflow-hidden animate-scale-in p-8 sm:p-10">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 tracking-tight">Contact Info</h3>
+                  <p className="text-sm text-gray-500 mt-1">Direct candidate details</p>
+                </div>
+                <button onClick={() => setShowContactPopup(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-system-blue">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Mobile</div>
+                    <div className="text-sm font-bold text-gray-900">{selectedCandidate.analysis?.phone || 'NA'}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-system-blue">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Email</div>
+                    <div className="text-sm font-bold text-gray-900">{selectedCandidate.analysis?.email || 'NA'}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-system-blue">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Address</div>
+                    <div className="text-sm font-bold text-gray-900">{selectedCandidate.analysis?.address || 'NA'}</div>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setShowContactPopup(false)}
+                className="w-full mt-10 py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-all shadow-lg active:scale-95"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Tab Navigation */}
+        <div className="bg-white border-b border-gray-100 flex justify-center sticky top-[73px] z-40">
+          <div className="flex w-full max-w-4xl">
+            {['profile', 'scan', 'interview'].map((t) => (
+              <button 
+                key={t}
+                onClick={() => { setModalTab(t as any); if(t === 'interview') handleLoadInterview(); }}
+                className={`flex-1 py-4 text-sm font-bold capitalize border-b-2 transition-all relative ${modalTab === t ? 'text-system-blue border-system-blue' : 'text-gray-400 border-transparent hover:text-gray-600'}`}
+              >
+                {t === 'scan' ? 'Recruiter Scan' : t === 'interview' ? 'Interview Prep' : 'Candidate Profile'}
+                {modalTab === t && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-system-blue animate-[scaleX_0.2s_ease-out]"></div>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+          <div className="max-w-6xl mx-auto">
+            {modalTab === 'profile' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
+                {/* Left Column: Main Info */}
+                <div className="lg:col-span-8 space-y-8">
+                  {/* Summary Card */}
+                  <section className="bg-white p-6 sm:p-10 rounded-[2rem] shadow-apple-card border border-white/60">
+                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-6">Executive Summary</h4>
+                    <p className="text-gray-800 leading-relaxed text-lg sm:text-xl font-medium font-serif italic">
+                      "{selectedCandidate.analysis.summary}"
+                    </p>
+                  </section>
+
+                  {/* Strengths & Gaps */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <section className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-apple-card border border-white/60">
+                      <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-system-green mb-6">Key Strengths</h4>
+                      <div className="space-y-3">
+                        {(selectedCandidate.analysis.strengths || []).map((s, i) => (
+                          <div key={i} className="flex items-start gap-3 p-3 bg-green-50/50 rounded-2xl border border-green-100/50">
+                            <span className="text-system-green font-bold">✓</span>
+                            <span className="text-sm font-semibold text-gray-700">{s}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                    <section className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-apple-card border border-white/60">
+                      <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-system-orange mb-6">Identified Gaps</h4>
+                      <div className="space-y-3">
+                        {(selectedCandidate.analysis.gaps || []).map((g, i) => (
+                          <div key={i} className="flex items-start gap-3 p-3 bg-orange-50/50 rounded-2xl border border-orange-100/50">
+                            <span className="text-system-orange font-bold">!</span>
+                            <span className="text-sm font-semibold text-gray-700">{g}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  </div>
+
+                  {/* Cross Domain Analysis */}
+                  {renderCrossDomainCard()}
+                </div>
+
+                {/* Right Column: Stats & Meta */}
+                <div className="lg:col-span-4 space-y-8">
+                  {/* Score Card */}
+                  <div className="bg-gradient-to-br from-gray-900 to-black text-white p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-system-blue blur-[80px] opacity-40 group-hover:opacity-60 transition-opacity"></div>
+                    <div className="relative z-10">
+                      <div className="flex justify-between items-end mb-8">
+                        <div>
+                          <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Match Score</div>
+                          <div className="text-6xl font-bold tracking-tighter">{selectedCandidate.analysis.match_score}%</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Potential</div>
+                          <div className="text-3xl font-bold tracking-tight text-blue-400">{selectedCandidate.analysis.potential_score}%</div>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-4 pt-6 border-t border-white/10">
+                        {Object.entries(selectedCandidate.analysis.breakdown || {}).map(([key, val]) => (
+                          <div key={key} className="space-y-1.5">
+                            <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                              <span>{key.replace('_', ' ')}</span>
+                              <span>{val}%</span>
+                            </div>
+                            <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                              <div className="h-full bg-system-blue transition-all duration-1000" style={{ width: `${val}%` }}></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Training Effort */}
+                  <section className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-apple-card border border-white/60">
+                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-6">Training Effort</h4>
+                    <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                      <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-xl">⏱️</div>
+                      <p className="text-gray-900 font-bold text-lg leading-tight">{selectedCandidate.analysis.training_estimate}</p>
+                    </div>
+                  </section>
+
+                  {/* Red Flags */}
+                  {(selectedCandidate.analysis.red_flags || []).length > 0 && (
+                    <section className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-apple-card border border-white/60 border-t-system-red border-t-4">
+                      <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-system-red mb-6">Red Flags</h4>
+                      <div className="space-y-3">
+                        {(selectedCandidate.analysis.red_flags || []).map((flag, i) => (
+                          <div key={i} className="flex items-start gap-3 p-3 bg-red-50/50 rounded-2xl border border-red-100/50">
+                            <span className="text-system-red font-bold">⚠️</span>
+                            <span className="text-sm font-semibold text-red-700">{flag}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {modalTab === 'scan' && (
+              <div className="max-w-5xl mx-auto pb-20 animate-scale-in">
+                <RecruiterScan 
+                  jobDescription={jobDescription} 
+                  resumeFile={selectedCandidate.file} 
+                />
+              </div>
+            )}
+
+            {modalTab === 'interview' && (
+              <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-scale-in">
+                {isLoadingModal ? (
+                  <div className="flex flex-col items-center justify-center py-40 bg-white rounded-[2.5rem] shadow-apple-card border border-white/60">
+                    <div className="w-12 h-12 border-4 border-system-blue border-t-transparent rounded-full animate-spin mb-6"></div>
+                    <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Drafting Custom Script...</p>
+                  </div>
+                ) : modalError ? (
+                  <div className="text-center py-40 bg-white rounded-[2.5rem] shadow-apple-card border border-white/60">
+                    <div className="text-4xl mb-4">⚠️</div>
+                    <p className="text-gray-800 font-bold mb-4">{modalError}</p>
+                    <button onClick={handleLoadInterview} className="px-8 py-3 bg-system-blue text-white rounded-full font-bold shadow-lg">Retry</button>
+                  </div>
+                ) : interviewScript && (
+                  <>
+                    <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-8 sm:p-10 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden">
+                      <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white/10 blur-[60px] rounded-full"></div>
+                      <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60 mb-6">Hiring Recommendation</h4>
+                      <p className="text-xl sm:text-2xl font-medium leading-relaxed font-serif italic">
+                        "{interviewScript.recommendation_template}"
+                      </p>
+                    </div>
+
+                    <div className="space-y-6">
+                      <h3 className="text-xl font-bold text-gray-900 px-2">Interview Questions</h3>
+                      {interviewScript.questions.map((q, i) => (
+                        <div key={i} className="bg-white p-6 sm:p-10 rounded-[2rem] shadow-apple-card border border-white/60 group hover:shadow-apple-hover transition-all">
+                          <div className="flex items-center justify-between mb-6">
+                            <span className={`text-[10px] font-bold uppercase px-3 py-1 rounded-full tracking-wider ${
+                              q.type === 'Technical' ? 'bg-blue-50 text-blue-600' :
+                              q.type === 'Behavioral' ? 'bg-purple-50 text-purple-600' :
+                              q.type === 'Situational' ? 'bg-orange-50 text-orange-600' :
+                              'bg-red-50 text-red-600'
+                            }`}>
+                              {q.type} Question
+                            </span>
+                            <span className="text-gray-300 font-bold text-sm">0{i + 1}</span>
+                          </div>
+                          <h4 className="text-xl sm:text-2xl font-bold text-gray-900 mb-8 leading-tight">{q.question}</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="bg-green-50/50 p-6 rounded-2xl border border-green-100/50">
+                              <h5 className="text-[10px] font-bold uppercase text-system-green mb-3 tracking-widest">Ideal Answer Signals</h5>
+                              <p className="text-sm text-gray-700 leading-relaxed font-medium">{q.expected_answer}</p>
+                            </div>
+                            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                              <h5 className="text-[10px] font-bold uppercase text-gray-400 mb-3 tracking-widest">Scoring Criteria</h5>
+                              <p className="text-sm text-gray-600 leading-relaxed">{q.score_criteria}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -551,57 +905,102 @@ Hiring Team`;
 
       {activeTab === 'jd-intel' && (
           isAnalyzingJd ? (
-            <div className="py-20 text-center animate-scale-in bg-white rounded-3xl shadow-apple-card border border-white/60">
-                 <div className="w-12 h-12 sm:w-16 sm:h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-system-blue">
-                     <SparklesIcon className="w-6 h-6 sm:w-8 sm:h-8 animate-pulse" />
+            <div className="py-20 text-center animate-scale-in bg-white rounded-[2.5rem] shadow-apple-card border border-white/60">
+                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-8 text-system-blue">
+                     <SparklesIcon className="w-8 h-8 sm:w-10 sm:h-10 animate-pulse" />
                  </div>
-                 <h3 className="text-lg font-bold text-gray-900">Auditing Job Description</h3>
-                 <p className="text-gray-500 text-sm mt-2 max-w-md mx-auto px-4">Gemini is checking for bias, clarity, and market competitiveness...</p>
+                 <h3 className="text-2xl font-bold text-gray-900 tracking-tight">Auditing Job Description</h3>
+                 <p className="text-gray-500 text-sm mt-3 max-w-md mx-auto px-4 font-medium">Gemini is checking for bias, clarity, and market competitiveness...</p>
             </div>
           ) : jdAnalysis ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 mb-10 animate-scale-in">
-                <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-apple-card border border-white/60">
-                    <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-xl font-bold text-gray-900">Analysis</h3>
-                        <div className="bg-gray-100 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide">AI Audit</div>
-                    </div>
-                    <div className="space-y-6">
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-sm font-medium"><span>Clarity</span> <span>{jdAnalysis.clarity_score}/100</span></div>
-                            <div className="h-2 bg-gray-100 rounded-full"><div className="h-full bg-system-green rounded-full" style={{width: `${jdAnalysis.clarity_score}%`}}></div></div>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-10 animate-scale-in">
+                <div className="lg:col-span-5 space-y-8">
+                    <div className="bg-white p-8 sm:p-10 rounded-[2.5rem] shadow-apple-card border border-white/60">
+                        <div className="flex items-center justify-between mb-10">
+                            <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">JD Audit Insights</h3>
+                            <div className="bg-gray-100 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest text-gray-500">AI Powered</div>
                         </div>
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-sm font-medium"><span>Bias Level</span> <span>{jdAnalysis.bias_score}/100</span></div>
-                            <div className="h-2 bg-gray-100 rounded-full"><div className="h-full bg-system-red rounded-full" style={{width: `${jdAnalysis.bias_score}%`}}></div></div>
+                        <div className="space-y-8">
+                            <div className="space-y-3">
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-gray-500">
+                                    <span>Clarity Score</span> 
+                                    <span className="text-gray-900">{jdAnalysis.clarity_score}%</span>
+                                </div>
+                                <div className="h-1.5 bg-gray-50 rounded-full overflow-hidden">
+                                    <div className="h-full bg-system-green rounded-full transition-all duration-1000" style={{width: `${jdAnalysis.clarity_score}%`}}></div>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-gray-500">
+                                    <span>Bias Level</span> 
+                                    <span className="text-gray-900">{jdAnalysis.bias_score}%</span>
+                                </div>
+                                <div className="h-1.5 bg-gray-50 rounded-full overflow-hidden">
+                                    <div className="h-full bg-system-red rounded-full transition-all duration-1000" style={{width: `${jdAnalysis.bias_score}%`}}></div>
+                                </div>
+                            </div>
                         </div>
+                        
+                        {jdAnalysis.red_flags_in_jd && jdAnalysis.red_flags_in_jd.length > 0 && (
+                            <div className="mt-12 p-6 bg-red-50/50 rounded-3xl border border-red-100/50">
+                                <h4 className="text-[10px] font-bold uppercase tracking-widest text-system-red mb-4">Red Flag Terms</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {jdAnalysis.red_flags_in_jd.map((f, i) => (
+                                        <span key={i} className="px-3 py-1.5 bg-white rounded-xl text-[11px] font-bold text-red-600 border border-red-100 shadow-sm">
+                                            {f}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
-                    <div className="mt-8 p-4 bg-red-50 rounded-2xl border border-red-100">
-                        <h4 className="font-bold text-red-900 text-sm mb-2">Red Flag Terms</h4>
-                        <div className="flex flex-wrap gap-2">
-                            {jdAnalysis.red_flags_in_jd?.map((f, i) => <span key={i} className="px-2 py-1 bg-white rounded-md text-xs text-red-600 border border-red-100 shadow-sm">{f}</span>)}
+
+                    <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60">
+                        <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mb-6">Market Competitiveness</h4>
+                        <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                            <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-xl">📊</div>
+                            <div>
+                                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">Market Fit</div>
+                                <div className="text-lg font-bold text-gray-900">High Demand</div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div className="bg-gradient-to-br from-indigo-900 to-purple-900 text-white p-6 sm:p-8 rounded-3xl shadow-2xl flex flex-col">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-bold opacity-90">Optimized Description</h3>
-                        <button 
-                            onClick={handleCopyJD}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-medium transition-all text-white border border-white/10"
-                        >
-                            {jdCopied ? (
-                                <>
-                                    <span className="text-green-300">✓</span>
-                                </>
-                            ) : (
-                                <>
-                                    <ClipboardIcon className="w-3.5 h-3.5" />
-                                </>
-                            )}
-                        </button>
-                    </div>
-                    <div className="prose prose-invert prose-sm max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                        <pre className="whitespace-pre-wrap font-sans opacity-80">{jdAnalysis.rewritten_jd}</pre>
+
+                <div className="lg:col-span-7 bg-gray-900 text-white p-8 sm:p-12 rounded-[2.5rem] shadow-2xl flex flex-col relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 -mt-20 -mr-20 w-60 h-60 bg-system-blue blur-[100px] opacity-20 group-hover:opacity-30 transition-opacity"></div>
+                    <div className="relative z-10 flex flex-col h-full">
+                        <div className="flex justify-between items-center mb-10">
+                            <h3 className="text-xl font-bold tracking-tight">Optimized Description</h3>
+                            <button 
+                                onClick={handleCopyJD}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 rounded-2xl text-xs font-bold transition-all text-white border border-white/10 active:scale-95"
+                            >
+                                {jdCopied ? (
+                                    <>
+                                        <span className="text-green-400">✓ Copied</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <ClipboardIcon className="w-4 h-4" />
+                                        <span>Copy JD</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto pr-4 custom-scrollbar-white">
+                            <div className="prose prose-invert prose-lg max-w-none">
+                                <pre className="whitespace-pre-wrap font-serif italic text-white/80 leading-relaxed text-base sm:text-lg border-0 bg-transparent p-0 m-0">
+                                    {jdAnalysis.rewritten_jd}
+                                </pre>
+                            </div>
+                        </div>
+                        <div className="mt-10 pt-8 border-t border-white/10 flex items-center gap-4">
+                            <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center text-lg">✨</div>
+                            <p className="text-xs text-white/50 font-medium leading-relaxed">
+                                This version is optimized for SEO, clarity, and inclusivity to attract top-tier talent.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -622,52 +1021,77 @@ Hiring Team`;
             <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept=".pdf,.jpg,.png,.txt" />
           </div>
 
-          {/* Bulk Actions Bar */}
-          {selectedIds.size > 0 && (
-            <div className="mb-6 bg-gray-900 text-white p-4 rounded-2xl shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4 animate-[scaleIn_0.2s_ease-out] relative">
-                {/* Limit Toast */}
-                {showCompareToast && (
-                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-bold py-2 px-4 rounded-full shadow-lg animate-[fadeIn_0.2s_ease-out] whitespace-nowrap z-30">
-                        Compare supports up to 3 profiles.
-                    </div>
-                )}
+          {/* Bulk Actions Bar - Always Present Above List */}
+          {candidates.length > 0 && (
+            <div className="sticky top-4 z-[60] w-full max-w-3xl mx-auto mb-8 animate-scale-in">
+                <div className="bg-gray-900/95 backdrop-blur-xl text-white p-3 sm:p-4 rounded-full shadow-2xl border border-white/10 flex items-center justify-between gap-4">
+                    {/* Limit Toast */}
+                    {showCompareToast && (
+                        <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-bold py-2 px-4 rounded-full shadow-lg animate-[fadeIn_0.2s_ease-out] whitespace-nowrap z-30 border border-white/5">
+                            Compare supports up to 3 profiles.
+                        </div>
+                    )}
 
-                <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
-                    <div className="bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full border border-white/10">
-                        {selectedIds.size} Selected
+                    <div className="flex items-center gap-3 pl-2">
+                        <div className="w-8 h-8 bg-system-blue rounded-full flex items-center justify-center text-xs font-black shadow-lg shadow-blue-500/20">
+                            {selectedIds.size}
+                        </div>
+                        <div className="hidden sm:block">
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 leading-none mb-1">Selected</div>
+                            <div className="text-xs font-bold leading-none">Candidates</div>
+                        </div>
                     </div>
-                    <span className="text-sm text-gray-300 font-medium">Candidates ready</span>
-                </div>
-                <div className="flex items-center gap-3 w-full sm:w-auto overflow-x-auto hide-scrollbar">
-                    <button 
-                        onClick={handleDeselectAll}
-                        className="px-4 py-2 text-sm font-semibold text-gray-400 hover:text-white transition-colors whitespace-nowrap"
-                    >
-                        Deselect
-                    </button>
-                    <button 
-                        onClick={handleChat}
-                        className="px-5 py-2 bg-white/10 text-white border border-white/20 rounded-xl text-sm font-bold hover:bg-white/20 transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 0 1-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                        Ask me anything
-                    </button>
-                    <button 
-                        onClick={handleCompare}
-                        disabled={selectedIds.size < 2}
-                        className="px-5 py-2 bg-white/10 text-white border border-white/20 rounded-xl text-sm font-bold hover:bg-white/20 transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={selectedIds.size < 2 ? "Select at least 2 candidates" : "Compare up to 3 candidates"}
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" /></svg>
-                        Compare
-                    </button>
-                    <button 
-                        onClick={handleBulkEmail}
-                        className="px-5 py-2 bg-white text-gray-900 rounded-xl text-sm font-bold hover:bg-gray-100 transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
-                        Bulk Email
-                    </button>
+
+                    <div className="flex items-center gap-2">
+                        <div className="relative group">
+                            <button 
+                                onClick={async () => {
+                                    if (window.confirm("All the JD and candidate from the list will be removed. Are you sure?")) {
+                                        await archiveAllCandidates();
+                                        setJobDescription('');
+                                        setJdAnalysis(null);
+                                        setCandidates([]);
+                                        setSelectedIds(new Set());
+                                    }
+                                }}
+                                className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full transition-all flex items-center justify-center group"
+                            >
+                                <RefreshCw className="w-5 h-5 sm:w-4 sm:h-4 text-white" />
+                            </button>
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-[70] shadow-xl border border-white/5">
+                                All the JD and candidate from the list will be removed
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-800"></div>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={handleChat}
+                            disabled={selectedIds.size === 0}
+                            className="p-2.5 sm:px-5 sm:py-2.5 bg-white/10 hover:bg-white/20 rounded-full transition-all flex items-center gap-2 group disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="AI Chat"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 0 1-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                            <span className="hidden sm:inline text-xs font-bold">Ask AI</span>
+                        </button>
+                        <button 
+                            onClick={handleCompare}
+                            disabled={selectedIds.size < 2}
+                            className="p-2.5 sm:px-5 sm:py-2.5 bg-white/10 hover:bg-white/20 rounded-full transition-all flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed group"
+                            title="Compare Profiles"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" /></svg>
+                            <span className="hidden sm:inline text-xs font-bold">Compare</span>
+                        </button>
+                        <button 
+                            onClick={handleBulkEmail}
+                            disabled={selectedIds.size === 0}
+                            className="p-2.5 sm:px-5 sm:py-2.5 bg-white text-gray-900 rounded-full transition-all flex items-center gap-2 hover:scale-105 active:scale-95 group disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Bulk Email"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+                            <span className="hidden sm:inline text-xs font-bold">Email</span>
+                        </button>
+                        <div className="w-px h-6 bg-white/10 mx-1 hidden sm:block"></div>
+                    </div>
                 </div>
             </div>
           )}
@@ -718,35 +1142,55 @@ Hiring Team`;
                                             {c.status === 'processing' ? (
                                                 <div className="flex items-center gap-2 text-system-blue">
                                                     <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                                                    <span className="text-xs font-semibold">Analyzing...</span>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest">Analyzing</span>
                                                 </div>
                                             ) : c.status === 'error' ? (
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-red-500 font-medium bg-red-50 px-2 py-1 rounded">Failed</span>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-red-500 bg-red-50 px-2 py-1 rounded">Failed</span>
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); handleReanalyze(c); }}
-                                                        className="text-xs text-system-blue hover:text-blue-700 font-medium bg-blue-50 px-2 py-1 rounded transition-colors"
+                                                        className="text-[10px] font-black uppercase tracking-widest text-system-blue hover:text-blue-700 bg-blue-50 px-2 py-1 rounded transition-colors"
                                                     >
                                                         Retry
                                                     </button>
                                                 </div>
                                             ) : c.analysis ? (
-                                                <span className={`text-sm font-bold px-2 py-1 rounded-md ${c.analysis.match_score >= 80 ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{c.analysis.match_score}%</span>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-10 bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                                                        <div className={`h-full rounded-full ${c.analysis.match_score >= 80 ? 'bg-system-green' : c.analysis.match_score >= 60 ? 'bg-system-orange' : 'bg-system-red'}`} style={{ width: `${c.analysis.match_score}%` }}></div>
+                                                    </div>
+                                                    <span className={`text-sm font-black ${c.analysis.match_score >= 80 ? 'text-system-green' : c.analysis.match_score >= 60 ? 'text-system-orange' : 'text-system-red'}`}>{c.analysis.match_score}%</span>
+                                                </div>
                                             ) : (
-                                                <span className="text-xs text-gray-400">Queued</span>
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Queued</span>
                                             )}
                                         </td>
-                                        <td className="p-5 text-sm text-gray-500">{c.analysis?.potential_score || '-'}</td>
-                                        <td className="p-5 text-sm text-gray-500">{c.analysis?.years_experience ? `${c.analysis.years_experience}y` : '-'}</td>
+                                        <td className="p-5 text-sm font-bold text-gray-900">{c.analysis?.potential_score ? `${c.analysis.potential_score}%` : '-'}</td>
+                                        <td className="p-5 text-sm font-bold text-gray-900">{c.analysis?.years_experience ? `${c.analysis.years_experience}y` : '-'}</td>
                                         <td className="p-5 text-right pr-8">
-                                            <button 
-                                                onClick={() => handleOpenCandidate(c)}
-                                                disabled={c.status !== 'analyzed'}
-                                                className="text-system-blue text-sm font-semibold transition-opacity disabled:opacity-0"
-                                            >
-                                                View &rarr;
-                                            </button>
-                                        </td>
+                                            <div className="flex items-center justify-end gap-2">
+                                              <button 
+                                                  onClick={() => setContactCandidate(c)}
+                                                  disabled={c.status !== 'analyzed'}
+                                                  className="text-gray-500 hover:text-system-blue text-sm font-semibold transition-opacity disabled:opacity-0"
+                                              >
+                                                  Contact
+                                              </button>
+                                              <button 
+                                                  onClick={() => handleOpenCandidate(c)}
+                                                  disabled={c.status !== 'analyzed'}
+                                                  className="text-system-blue text-sm font-semibold transition-opacity disabled:opacity-0"
+                                              >
+                                                  View &rarr;
+                                              </button>
+                                              <button 
+                                                  onClick={() => setCandidateToDelete(c)}
+                                                  className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                                              >
+                                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                                              </button>
+                                            </div>
+                                         </td>
                                     </tr>
                                 );
                             })}
@@ -799,14 +1243,21 @@ Hiring Team`;
                                                 <span className="font-medium">{c.analysis?.years_experience ? `${c.analysis.years_experience}y` : '-'}</span>
                                             </div>
                                         </div>
-                                        
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); handleOpenCandidate(c); }}
-                                            disabled={c.status !== 'analyzed'}
-                                            className="px-4 py-2 bg-gray-100 text-gray-900 text-xs font-bold rounded-lg disabled:opacity-50"
-                                        >
-                                            View Profile
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); handleOpenCandidate(c); }}
+                                                disabled={c.status !== 'analyzed'}
+                                                className="px-4 py-2 bg-gray-100 text-gray-900 text-xs font-bold rounded-lg disabled:opacity-50"
+                                            >
+                                                View Profile
+                                            </button>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setCandidateToDelete(c); }}
+                                                className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                                            </button>
+                                        </div>
                                     </div>
                                     
                                     {c.status === 'error' && (
@@ -915,120 +1366,111 @@ Hiring Team`;
           </div>
       )}
 
-      {/* Candidate Details Modal - Full Screen Mobile */}
-      {selectedCandidate && selectedCandidate.analysis && !showEmailModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
-            <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setSelectedCandidateId(null)}></div>
-            <div className="relative w-full max-w-5xl h-[100dvh] sm:h-[85vh] bg-white rounded-none sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-[translateY_0.3s_ease-out]">
-                {/* Header */}
-                <div className="bg-white border-b border-gray-100 p-4 sm:p-6 flex justify-between items-center z-10 sticky top-0">
-                    <div>
-                        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight line-clamp-1">{selectedCandidate.name}</h2>
-                        <p className="text-gray-500 text-xs sm:text-sm mt-1">{selectedCandidate.analysis.seniority_level} • {selectedCandidate.analysis.years_experience} Years</p>
-                    </div>
-                    <button onClick={() => setSelectedCandidateId(null)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors">
-                        <svg className="w-5 h-5 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                    </button>
-                </div>
+      {/* Candidate Details Modal - REMOVED and replaced by viewMode === 'candidate-details' */}
 
-                <div className="flex border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
-                    {['profile', 'clean', 'interview'].map((t) => (
-                        <button 
-                            key={t}
-                            onClick={() => { setModalTab(t as any); if(t === 'clean') handleLoadCleanResume(); if(t === 'interview') handleLoadInterview(); }}
-                            className={`flex-1 py-3 sm:py-4 text-xs sm:text-sm font-semibold capitalize border-b-2 transition-all ${modalTab === t ? 'border-system-blue text-system-blue bg-white' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                        >
-                            {t}
-                        </button>
-                    ))}
-                </div>
+      {/* Contact Modal */}
+      {contactCandidate && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setContactCandidate(null)}></div>
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden animate-[scaleIn_0.2s_ease-out]">
+                  <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                      <h2 className="text-xl font-bold text-gray-900">Contact Candidate</h2>
+                      <button onClick={() => setContactCandidate(null)} className="text-gray-400 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100">✕</button>
+                  </div>
+                  <div className="p-8 space-y-6">
+                      <div className="flex items-center gap-4">
+                          <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-system-blue text-2xl font-bold">
+                              {contactCandidate.name.charAt(0)}
+                          </div>
+                          <div>
+                              <h3 className="text-lg font-bold text-gray-900">{contactCandidate.name}</h3>
+                              <p className="text-sm text-gray-500">{contactCandidate.analysis?.seniority_level || 'Candidate'}</p>
+                          </div>
+                      </div>
 
-                <div className="flex-1 overflow-y-auto bg-[#F9F9FB] p-4 sm:p-8">
-                     {modalTab === 'profile' && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 pb-10">
-                            <div className="md:col-span-2 space-y-6">
-                                <div className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-gray-100">
-                                    <h4 className="text-xs font-bold uppercase text-gray-400 mb-4">Executive Summary</h4>
-                                    <p className="text-gray-800 leading-relaxed text-base sm:text-lg">{selectedCandidate.analysis.summary}</p>
-                                </div>
-                                <div className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-gray-100">
-                                    <h4 className="text-xs font-bold uppercase text-gray-400 mb-4">Key Strengths</h4>
-                                    <div className="flex flex-wrap gap-2">
-                                        {selectedCandidate.analysis.strengths.map((s,i) => <span key={i} className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-sm font-medium">{s}</span>)}
-                                    </div>
-                                </div>
-                                {/* Cross Domain Card */}
-                                {renderCrossDomainCard()}
-                            </div>
-                            <div className="space-y-6">
-                                <div className="bg-gradient-to-br from-system-blue to-blue-600 text-white p-6 rounded-3xl shadow-lg">
-                                    <div className="text-blue-100 text-sm font-medium mb-1">Match Score</div>
-                                    <div className="text-5xl font-bold tracking-tight mb-6">{selectedCandidate.analysis.match_score}%</div>
-                                    <div className="text-blue-100 text-sm font-medium mb-1">Potential</div>
-                                    <div className="text-3xl font-bold tracking-tight opacity-90">{selectedCandidate.analysis.potential_score}%</div>
-                                </div>
-                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                                    <h4 className="text-xs font-bold uppercase text-gray-400 mb-4">Training Effort</h4>
-                                    <p className="text-gray-900 font-medium">{selectedCandidate.analysis.training_estimate}</p>
-                                </div>
-                            </div>
-                        </div>
-                     )}
-                     
-                     {modalTab === 'clean' && (
-                         <div className="max-w-3xl mx-auto bg-white p-6 sm:p-12 shadow-sm rounded-xl min-h-full">
-                             {isLoadingModal ? (
-                                <div className="flex justify-center py-20">
-                                    <div className="w-8 h-8 border-2 border-system-blue border-t-transparent rounded-full animate-spin"></div>
-                                </div>
-                             ) : modalError ? (
-                                <p className="text-center text-red-500 py-20">{modalError}</p>
-                             ) : (
-                                <pre className="whitespace-pre-wrap font-serif text-gray-800 leading-7 text-sm sm:text-base">{cleanResume}</pre>
-                             )}
-                         </div>
-                     )}
+                      <div className="space-y-4">
+                          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                              <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-gray-400 shadow-sm">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                              </div>
+                              <div>
+                                  <p className="text-[10px] font-bold text-gray-400 uppercase">Mobile Number</p>
+                                  <p className="text-sm font-medium text-gray-900">+1 (555) 012-3456</p>
+                              </div>
+                          </div>
 
-                     {modalTab === 'interview' && (
-                         <div className="max-w-3xl mx-auto space-y-6 pb-10">
-                             {isLoadingModal ? (
-                                 <div className="flex flex-col items-center justify-center py-20">
-                                     <div className="w-8 h-8 border-2 border-system-blue border-t-transparent rounded-full animate-spin mb-4"></div>
-                                     <p className="text-gray-400 font-medium">Drafting custom interview script...</p>
-                                 </div>
-                             ) : modalError ? (
-                                <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-red-100">
-                                    <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">⚠️</div>
-                                    <p className="text-gray-800 font-medium mb-4">{modalError}</p>
-                                    <button 
-                                        onClick={handleLoadInterview}
-                                        className="px-6 py-2 bg-system-blue text-white rounded-full font-medium hover:bg-blue-600 transition-colors"
-                                    >
-                                        Try Again
-                                    </button>
-                                </div>
-                             ) : interviewScript && (
-                                 <>
-                                    <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-2xl animate-scale-in">
-                                        <h4 className="font-bold text-indigo-900 mb-2">Recommendation</h4>
-                                        <p className="text-indigo-800 leading-relaxed text-sm sm:text-base">{interviewScript.recommendation_template}</p>
-                                    </div>
-                                    {interviewScript.questions.map((q, i) => (
-                                        <div key={i} className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-100 animate-scale-in" style={{animationDelay: `${i * 100}ms`}}>
-                                            <span className="text-[10px] font-bold uppercase bg-gray-100 text-gray-500 px-2 py-1 rounded mb-3 inline-block">{q.type}</span>
-                                            <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-4">{q.question}</h4>
-                                            <div className="text-sm bg-green-50/50 p-4 rounded-xl border border-green-50 text-gray-700">
-                                                <span className="font-bold text-green-700 block mb-1">Look for:</span> {q.expected_answer}
-                                            </div>
-                                        </div>
-                                    ))}
-                                 </>
-                             )}
-                         </div>
-                     )}
-                </div>
-            </div>
-        </div>
+                          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                              <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-gray-400 shadow-sm">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                              </div>
+                              <div>
+                                  <p className="text-[10px] font-bold text-gray-400 uppercase">Email Address</p>
+                                  <p className="text-sm font-medium text-gray-900">{contactCandidate.name.toLowerCase().replace(/\s+/g, '.')}@example.com</p>
+                              </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                              <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-gray-400 shadow-sm">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                              </div>
+                              <div>
+                                  <p className="text-[10px] font-bold text-gray-400 uppercase">Address</p>
+                                  <p className="text-sm font-medium text-gray-900">San Francisco, CA</p>
+                              </div>
+                          </div>
+                      </div>
+
+                      <button 
+                          onClick={() => setContactCandidate(null)}
+                          className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-gray-800 transition-colors shadow-lg shadow-gray-900/10"
+                      >
+                          Close
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {candidateToDelete && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setCandidateToDelete(null)}></div>
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden animate-[scaleIn_0.2s_ease-out]">
+                  <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                      <h2 className="text-xl font-bold text-gray-900">Are you sure?</h2>
+                      <button onClick={() => setCandidateToDelete(null)} className="text-gray-400 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100">✕</button>
+                  </div>
+                  <div className="p-8 space-y-6">
+                      <div className="flex flex-col items-center text-center">
+                          <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center text-system-red text-2xl mb-4">
+                              ⚠️
+                          </div>
+                          <p className="text-gray-600 leading-relaxed">
+                              You are about to delete <span className="font-bold text-gray-900">{candidateToDelete.name}</span>. 
+                              This data will be deleted forever from the database and cannot be recovered.
+                          </p>
+                      </div>
+
+                      <div className="flex gap-3">
+                          <button 
+                              onClick={() => setCandidateToDelete(null)}
+                              className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-2xl hover:bg-gray-200 transition-colors"
+                          >
+                              Cancel
+                          </button>
+                          <button 
+                              onClick={() => {
+                                  deleteCandidate(candidateToDelete.id);
+                                  setCandidateToDelete(null);
+                              }}
+                              className="flex-1 py-3 bg-system-red text-white font-bold rounded-2xl hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20"
+                          >
+                              Sure, Delete
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
       )}
 
        {/* Full Screen Modal for JD */}

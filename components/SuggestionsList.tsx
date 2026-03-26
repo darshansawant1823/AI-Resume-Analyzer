@@ -19,7 +19,7 @@ export const SuggestionsList: React.FC<{ items: MissingItem[] }> = ({ items }) =
       </div>
       
       <div className="space-y-3">
-        {items.map((item, index) => {
+        {(items || []).map((item, index) => {
           const style = getStyles(item.importance);
           return (
             <div key={index} className="group flex items-start p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-apple-hover transition-shadow duration-200">

@@ -1,6 +1,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import type { 
+  Candidate,
   AnalysisResult, 
   RecruiterScanResult, 
   CandidateAnalysis, 
@@ -230,6 +231,12 @@ export const analyzeCandidate = async (
   const prompt = `
     You are an AI recruitment assistant. Analyze this resume against the provided Job Description.
     
+    **CRITICAL INSTRUCTION: ZERO HALLUCINATION POLICY**
+    - Use ONLY the information found in the provided resume.
+    - DO NOT use any external knowledge about the candidate.
+    - If a field is not present in the resume, use "NA" or 0 as appropriate.
+    - DO NOT invent or "fill in" missing information.
+
     JOB DESCRIPTION:
     ${jobDescription}
 
@@ -243,6 +250,10 @@ export const analyzeCandidate = async (
         "training_estimate": "string (e.g. 'None', '2 weeks for X tool', 'Significant upskilling required')",
         "years_experience": number,
         "seniority_level": "Junior" | "Mid" | "Senior" | "Principal" | "Executive",
+        "email": "string (extracted from resume, use 'NA' if not found)",
+        "phone": "string (extracted from resume, use 'NA' if not found)",
+        "address": "string (extracted from resume, use 'NA' if not found)",
+        "jobType": "string (the candidate's current or target job title)",
         "breakdown": {
             "core_skills": number (0-100),
             "title_alignment": number (0-100),
@@ -624,4 +635,32 @@ export const interviewChat = async (request: ChatRequest): Promise<InterviewChat
   });
 
   return JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));
+};
+
+export const generateComparisonSummary = async (candidates: Candidate[], jdText: string): Promise<string> => {
+  const context = candidates
+    .map(c => `[CANDIDATE: ${c.name}]\nScore: ${c.analysis?.match_score}%\nPotential: ${c.analysis?.potential_score}%\nStrengths: ${c.analysis?.strengths?.join(', ')}\nGaps: ${c.analysis?.gaps?.join(', ')}`)
+    .join('\n\n');
+
+  const prompt = `
+    You are a senior talent acquisition specialist.
+    Compare the following candidates for the job description provided.
+    Provide a concise, high-level summary (max 150 words) that highlights who is the best fit, who has the most potential, and any critical trade-offs the recruiter should consider.
+    
+    JOB DESCRIPTION:
+    ${jdText}
+    
+    CANDIDATES:
+    ${context}
+    
+    SUMMARY:
+  `;
+
+  const response = await ai.models.generateContent({
+    model,
+    contents: [{ parts: [{ text: prompt }] }],
+    config: { temperature: 0.2 }
+  });
+
+  return response.text.trim();
 };

@@ -1,11 +1,14 @@
 
 import React, { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
+import { User } from 'firebase/auth';
+import { useInterviewData } from '../src/hooks/useInterviewData';
 import { createPortal } from 'react-dom';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
 import { ClipboardIcon } from './icons/ClipboardIcon';
 import { MaximizeIcon } from './icons/MaximizeIcon';
 import { EditIcon } from './icons/EditIcon';
+import { RefreshCw, Sparkles } from 'lucide-react';
 import type { 
   InterviewPredictionResponse, 
   PredictedQuestion, 
@@ -39,10 +42,12 @@ interface ResearchSource {
 const VIRTUAL_ITEM_HEIGHT = 56;
 const DROPDOWN_MAX_HEIGHT = 300;
 
-export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProps> = ({ 
+export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProps & { user: User | null }> = ({ 
   initialJobDescription = '', 
-  resumeFile 
+  resumeFile,
+  user
 }) => {
+  const { saveInterview } = useInterviewData(user);
   // --- Inputs State ---
   const [companyInput, setCompanyInput] = useState('');
   const [selectedCompany, setSelectedCompany] = useState<CompanyMetadata | null>(null);
@@ -275,12 +280,6 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
           provenance: `Analyzed ~140 recent interview reports`
       },
       {
-          name: "LinkedIn Talent Insights",
-          description: "Role requirements & company hiring trends",
-          url: `https://www.linkedin.com/search/results/companies/?keywords=${encodedName}`,
-          provenance: "Verified against active job postings & skills data"
-      },
-      {
           name: "TeamBlind Discussions",
           description: "Verified employee sentiment & process signals",
           url: `https://www.teamblind.com/search/${encodedName}`,
@@ -349,6 +348,14 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
     try {
         const feedback = await analyzePracticeAnswer(practiceMode.question.question, practiceAnswer);
         setPracticeFeedback(feedback);
+        if (user) {
+            await saveInterview({
+                type: 'practice_feedback',
+                question: practiceMode.question.question,
+                answer: practiceAnswer,
+                feedback
+            });
+        }
     } catch (e) {
         console.error(e);
         alert("Failed to analyze answer. Please try again.");
@@ -397,6 +404,14 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
       
       setPendingResult(response);
       
+      if (user) {
+        await saveInterview({
+          company: companyInput,
+          role: roleInput,
+          result: response
+        });
+      }
+      
       if (skipDisclaimerSession) {
           setResult(response);
           setPendingResult(null);
@@ -412,6 +427,27 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
       setIsLoading(false);
     }
   };
+
+  const handleRefresh = () => {
+    if (window.confirm("All the JD and candidate from the list will be removed. Are you sure?")) {
+      setCompanyInput('');
+      setSelectedCompany(null);
+      setRoleInput('');
+      setSelectedRole(null);
+      setJdText('');
+      setUseJD(false);
+      setResumeText('');
+      setResumeFileName('');
+      setUseResume(false);
+      setResult(null);
+      setResearchSources([]);
+      setPracticeMode({ isOpen: false, question: null });
+      setPracticeFeedback(null);
+      setPracticeAnswer('');
+    }
+  };
+
+  const chatInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 sm:space-y-8 animate-scale-in pb-20">
@@ -688,7 +724,7 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
                       <div className="bg-gray-50 rounded-xl p-5 border border-gray-100">
                           <h3 className="text-xs font-bold uppercase text-gray-500 mb-3">Research sources used (examples)</h3>
                           <ul className="space-y-4">
-                              {researchSources.map((source, idx) => (
+                              {(researchSources || []).map((source, idx) => (
                                   <li key={idx} className="text-sm flex flex-col gap-1">
                                       <div className="flex items-baseline gap-2">
                                           <span className="font-semibold text-gray-900">[{idx + 1}] {source.name}</span>
@@ -744,7 +780,7 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
            </div>
 
            <div className="space-y-4">
-              {result.questions.filter(q => activeTab === 'all' || q.category === activeTab).map(q => (
+              {(result.questions || []).filter(q => activeTab === 'all' || q.category === activeTab).map(q => (
                   <div key={q.id} className="bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-apple-hover transition-all p-6 group">
                       <div className="flex justify-between items-start mb-3 gap-4">
                           <div>
@@ -763,7 +799,7 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
 
                       <div className="bg-gray-50/80 rounded-xl p-4 mb-4">
                           <ul className="space-y-1">
-                              {q.answerGuidelines.map((g, i) => (
+                              {(q.answerGuidelines || []).map((g, i) => (
                                   <li key={i} className="text-sm text-gray-700 flex gap-2 items-start"><span className="text-system-blue mt-1">•</span> {g}</li>
                               ))}
                           </ul>
@@ -793,6 +829,7 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
         onViewSources={handleViewResearchSources}
         onClearJD={handleClearJD}
         onClearResume={handleClearResume}
+        user={user}
       />
 
       {/* Practice Mode Modal */}
@@ -911,6 +948,41 @@ export const InterviewQuestionPredictor: React.FC<InterviewQuestionPredictorProp
           </div>,
           document.body
       )}
+
+      {/* Floating Action Bar for Interview Predictor */}
+      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] animate-[slideUp_0.4s_cubic-bezier(0.16,1,0.3,1)]">
+          <div className="bg-gray-900/95 backdrop-blur-xl border border-white/10 rounded-full px-4 py-2.5 sm:px-6 sm:py-3 shadow-2xl flex items-center gap-4 text-white">
+              <div className="relative group">
+                  <button 
+                      onClick={handleRefresh}
+                      className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full transition-all flex items-center justify-center group"
+                  >
+                      <RefreshCw className="w-5 h-5 sm:w-4 sm:h-4 text-white" />
+                  </button>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-[70] shadow-xl border border-white/5">
+                      All the JD and candidate from the list will be removed
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-800"></div>
+                  </div>
+              </div>
+              
+              <div className="w-px h-6 bg-white/10 mx-1"></div>
+
+              <button 
+                  onClick={() => {
+                      const chatEl = document.querySelector('.bg-white.rounded-3xl.shadow-apple-card.border.border-white\\/60.overflow-hidden.flex.flex-col.h-\\[600px\\]');
+                      if (chatEl) {
+                          chatEl.scrollIntoView({ behavior: 'smooth' });
+                          const input = chatEl.querySelector('input');
+                          if (input) input.focus();
+                      }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-white text-gray-900 rounded-full text-xs font-bold hover:bg-gray-100 transition-all active:scale-95"
+              >
+                  <Sparkles className="w-4 h-4 text-indigo-600" />
+                  Ask AI
+              </button>
+          </div>
+      </div>
     </div>
   );
 };

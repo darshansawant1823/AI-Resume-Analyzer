@@ -43,7 +43,7 @@ const BreakdownItem: React.FC<BreakdownItemProps> = ({ title, scoreDetail, weigh
         className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'max-h-96 opacity-100 mb-4' : 'max-h-0 opacity-0'}`}
       >
         <ul className="space-y-2 pt-1 pl-1">
-           {scoreDetail.details.length > 0 ? scoreDetail.details.map((detail, index) => (
+           {(scoreDetail.details || []).length > 0 ? (scoreDetail.details || []).map((detail, index) => (
              <li key={index} className="text-xs sm:text-sm text-gray-600 flex items-start gap-2 leading-relaxed">
                <span className="block w-1.5 h-1.5 mt-1.5 rounded-full bg-gray-300 flex-shrink-0"></span>
                {detail}
@@ -80,7 +80,7 @@ export const BreakdownAccordion: React.FC<{ breakdown: Breakdown }> = ({ breakdo
                 </h4>
                 {breakdown.red_flags.score < 0 ? (
                     <ul className="space-y-2">
-                        {breakdown.red_flags.details.map((d, i) => (
+                        {(breakdown.red_flags.details || []).map((d, i) => (
                             <li key={i} className="text-sm text-red-700 flex gap-2">
                                 <span>⚠️</span> {d}
                             </li>

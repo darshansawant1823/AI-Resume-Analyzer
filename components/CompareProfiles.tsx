@@ -1,19 +1,40 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Candidate } from '../types';
+import { generateComparisonSummary } from '../services/geminiService';
 import { ArrowLeftIcon } from './icons/ArrowLeftIcon';
 import { PinIcon } from './icons/PinIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
+import { SparklesIcon } from './icons/SparklesIcon';
 
 interface CompareProfilesProps {
   candidates: Candidate[];
+  jdText: string;
   onBack: () => void;
 }
 
-export const CompareProfiles: React.FC<CompareProfilesProps> = ({ candidates, onBack }) => {
+export const CompareProfiles: React.FC<CompareProfilesProps> = ({ candidates, jdText, onBack }) => {
   const [baselineId, setBaselineId] = useState<string | null>(null);
   const [showDifferencesOnly, setShowDifferencesOnly] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+
+  useEffect(() => {
+    const fetchSummary = async () => {
+      if (candidates.length < 2) return;
+      setIsSummarizing(true);
+      try {
+        const summary = await generateComparisonSummary(candidates, jdText);
+        setAiSummary(summary);
+      } catch (error) {
+        console.error("Summary error", error);
+      } finally {
+        setIsSummarizing(false);
+      }
+    };
+    fetchSummary();
+  }, [candidates, jdText]);
 
   // Determine layout based on candidate count
   const gridCols = candidates.length === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-3';
@@ -95,7 +116,7 @@ export const CompareProfiles: React.FC<CompareProfilesProps> = ({ candidates, on
       // 4. Most Balanced (Lowest Standard Deviation across sub-scores)
       const getDeviation = (c: Candidate) => {
           if (!c.analysis?.breakdown) return 100;
-          const scores = Object.values(c.analysis.breakdown);
+          const scores = Object.values(c.analysis.breakdown || {});
           if (scores.length === 0) return 100;
           const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
           const variance = scores.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / scores.length;
@@ -228,6 +249,38 @@ export const CompareProfiles: React.FC<CompareProfilesProps> = ({ candidates, on
               <span>•</span>
               <span>{new Date().toLocaleDateString()}</span>
           </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8 no-print">
+        {/* AI Smart Summary */}
+        <div className="bg-white rounded-[2.5rem] shadow-apple-card border border-white/60 p-8 sm:p-10 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-system-blue blur-[80px] opacity-10 group-hover:opacity-20 transition-opacity"></div>
+            <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 bg-blue-50 rounded-2xl flex items-center justify-center">
+                        <SparklesIcon className="w-5 h-5 text-system-blue" />
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-bold text-gray-900">AI Smart Comparison</h2>
+                        <p className="text-xs text-gray-500 font-medium">Synthesized analysis of {candidates.length} candidates</p>
+                    </div>
+                </div>
+
+                {isSummarizing ? (
+                    <div className="space-y-3 animate-pulse">
+                        <div className="h-4 bg-gray-100 rounded-full w-3/4"></div>
+                        <div className="h-4 bg-gray-100 rounded-full w-full"></div>
+                        <div className="h-4 bg-gray-100 rounded-full w-5/6"></div>
+                    </div>
+                ) : aiSummary ? (
+                    <p className="text-gray-700 leading-relaxed font-medium italic text-lg border-l-4 border-system-blue pl-6 py-1">
+                        "{aiSummary}"
+                    </p>
+                ) : (
+                    <p className="text-gray-400 italic">Unable to generate summary at this time.</p>
+                )}
+            </div>
+        </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 print:p-0 print:max-w-none">

@@ -4,17 +4,29 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx server.ts",
     "build": "vite build",
+    "lint": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
-    "react-dom": "^19.2.0",
     "@google/genai": "^1.29.0",
-    "react": "^19.2.0"
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "firebase": "^12.10.0",
+    "firebase-admin": "^13.7.0",
+    "framer-motion": "^12.35.2",
+    "lucide-react": "^0.577.0",
+    "nodemailer": "^8.0.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "recharts": "^3.8.0",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
+    "@types/nodemailer": "^7.0.11",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"

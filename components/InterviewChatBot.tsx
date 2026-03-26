@@ -1,6 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { SparklesIcon } from './icons/SparklesIcon';
+import { User } from 'firebase/auth';
+import { useInterviewData } from '../src/hooks/useInterviewData';
 import type { ChatMessage, ChatSource, ChatRequest, CompanyMetadata, RoleMetadata } from '../types';
 import { interviewChat } from '../services/geminiService';
 
@@ -18,6 +20,7 @@ interface InterviewChatBotProps {
   onViewSources: () => void;
   onClearJD: () => void;
   onClearResume: () => void;
+  user: User | null;
 }
 
 const STARTER_QUESTIONS = [
@@ -42,8 +45,10 @@ export const InterviewChatBot: React.FC<InterviewChatBotProps> = ({
   onViewResume,
   onViewSources,
   onClearJD,
-  onClearResume
+  onClearResume,
+  user
 }) => {
+  const { saveInterview } = useInterviewData(user);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -111,6 +116,16 @@ export const InterviewChatBot: React.FC<InterviewChatBotProps> = ({
       };
 
       setMessages(prev => [...prev, aiMsg]);
+      
+      if (user) {
+        await saveInterview({
+          type: 'chat',
+          company: companyInput,
+          role: roleInput,
+          userQuestion: text,
+          aiAnswer: response.answerText
+        });
+      }
     } catch (error) {
       console.error("Chat Error", error);
       const errorMsg: ChatMessage = {

@@ -75,6 +75,10 @@ export interface CandidateAnalysis {
   training_estimate: string; // e.g., "2 weeks to upskill"
   years_experience: number;
   seniority_level: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  jobType?: string;
   // New fields for Comparison
   breakdown?: {
     core_skills: number;
@@ -89,11 +93,15 @@ export interface CandidateAnalysis {
 export interface Candidate {
   id: string;
   name: string; // Extracted from filename or analysis
-  file: File;
+  file: File | null;
   status: 'pending' | 'processing' | 'analyzed' | 'error';
   analysis?: CandidateAnalysis;
   crossDomainAnalysis?: CrossDomainAnalysis; // Cache for 24h
   extractedText?: string; // verbatim text for grounding
+  cleanResume?: string;
+  interviewScript?: InterviewScript;
+  createdAt?: string;
+  isHistory?: boolean;
 }
 
 export interface JDAnalysis {

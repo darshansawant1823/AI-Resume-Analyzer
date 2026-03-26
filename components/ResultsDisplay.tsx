@@ -6,6 +6,7 @@ import { BreakdownAccordion } from './BreakdownAccordion';
 import { SuggestionsList } from './SuggestionsList';
 import { ResumeView } from './ResumeView';
 import { RecruiterScan } from './RecruiterScan';
+import { RefreshCw, Sparkles } from 'lucide-react';
 
 interface ResultsDisplayProps {
   result: AnalysisResult | null;
@@ -16,6 +17,7 @@ interface ResultsDisplayProps {
   onUpdateResume: (newText: string) => void;
   resumeFile?: File | null;
   jobDescription?: string;
+  onAskAI?: () => void;
 }
 
 const LoadingState: React.FC = () => {
@@ -80,7 +82,7 @@ const ErrorState: React.FC<{ error: string, onResumeReset: () => void }> = ({ er
 );
 
 export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ 
-  result, isLoading, error, onResumeReset, originalResumeName, onUpdateResume, resumeFile, jobDescription
+  result, isLoading, error, onResumeReset, originalResumeName, onUpdateResume, resumeFile, jobDescription, onAskAI
 }) => {
   const [view, setView] = useState<'analysis' | 'scan'>('analysis');
 
@@ -146,6 +148,50 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
       ) : (
           <RecruiterScan jobDescription={jobDescription || ''} resumeFile={resumeFile || null} />
       )}
+
+      {/* Floating Action Bar for Job Seeker */}
+      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] animate-[slideUp_0.4s_cubic-bezier(0.16,1,0.3,1)]">
+          <div className="bg-gray-900/95 backdrop-blur-xl border border-white/10 rounded-full px-4 py-2.5 sm:px-6 sm:py-3 shadow-2xl flex items-center gap-4 text-white">
+              <div className="relative group">
+                  <button 
+                      onClick={() => {
+                          if (window.confirm("All the JD and candidate from the list will be removed. Are you sure?")) {
+                              onResumeReset();
+                          }
+                      }}
+                      className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full transition-all flex items-center justify-center group"
+                  >
+                      <RefreshCw className="w-5 h-5 sm:w-4 sm:h-4 text-white" />
+                  </button>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-[70] shadow-xl border border-white/5">
+                      All the JD and candidate from the list will be removed
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-800"></div>
+                  </div>
+              </div>
+              
+              <div className="w-px h-6 bg-white/10 mx-1"></div>
+
+              <button 
+                  onClick={onResumeReset}
+                  className="px-4 py-2 bg-white text-gray-900 rounded-full text-xs font-bold hover:bg-gray-100 transition-all active:scale-95"
+              >
+                  New Analysis
+              </button>
+
+              {onAskAI && (
+                  <>
+                    <div className="w-px h-6 bg-white/10 mx-1"></div>
+                    <button 
+                        onClick={onAskAI}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-full text-xs font-bold hover:bg-indigo-700 transition-all active:scale-95"
+                    >
+                        <Sparkles className="w-4 h-4" />
+                        Ask AI
+                    </button>
+                  </>
+              )}
+          </div>
+      </div>
     </div>
   );
 };

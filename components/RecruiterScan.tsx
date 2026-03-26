@@ -101,7 +101,7 @@ export const RecruiterScan: React.FC<RecruiterScanProps> = ({ jobDescription, re
                 <h4 className="font-bold text-gray-900 text-lg">Noticed First</h4>
             </div>
             <ul className="space-y-3 flex-1">
-                {scanResult.firstNoticed.map((item, i) => (
+                {(scanResult.firstNoticed || []).map((item, i) => (
                     <li key={i} className="flex items-start gap-3 text-[15px] font-medium text-gray-700 bg-gray-50 p-3 rounded-xl">
                         <span className="text-system-green mt-0.5">✓</span>
                         {item}
@@ -117,7 +117,7 @@ export const RecruiterScan: React.FC<RecruiterScanProps> = ({ jobDescription, re
                 <h4 className="font-bold text-gray-900 text-lg">Overlooked</h4>
             </div>
             <ul className="space-y-3 flex-1">
-                {scanResult.missedItems.map((item, i) => (
+                {(scanResult.missedItems || []).map((item, i) => (
                     <li key={i} className="flex items-start gap-3 text-[15px] text-gray-500 italic p-3">
                          <span className="text-gray-300">∅</span>
                         {item}
@@ -133,9 +133,9 @@ export const RecruiterScan: React.FC<RecruiterScanProps> = ({ jobDescription, re
                 <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-system-red font-bold text-sm">!</div>
                 <h4 className="font-bold text-gray-900 text-lg">Red Flags</h4>
             </div>
-             {scanResult.redFlags.length > 0 ? (
+             {(scanResult.redFlags || []).length > 0 ? (
                 <ul className="space-y-3 flex-1">
-                    {scanResult.redFlags.map((item, i) => (
+                    {(scanResult.redFlags || []).map((item, i) => (
                         <li key={i} className="flex items-start gap-3 text-[15px] font-medium text-red-600 bg-red-50/50 p-3 rounded-xl border border-red-50">
                             <span>⚠️</span>
                             {item}

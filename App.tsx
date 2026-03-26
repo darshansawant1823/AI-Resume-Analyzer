@@ -1,5 +1,11 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from './src/firebase';
+import { useFirestoreSync } from './src/hooks/useFirebase';
+import { useInterviewData } from './src/hooks/useInterviewData';
+import { AuthPage } from './src/components/AuthPage';
+import { ProfilePage } from './components/ProfilePage';
 import type { AnalysisResult } from './types';
 import { analyzeResume } from './services/geminiService';
 import { Header } from './components/Header';
@@ -8,13 +14,93 @@ import { ResumeUploader } from './components/ResumeUploader';
 import { ResultsDisplay } from './components/ResultsDisplay';
 import { SparklesIcon } from './components/icons/SparklesIcon';
 import { RecruiterDashboard } from './components/RecruiterDashboard';
+import { AdminDashboard } from './components/AdminDashboard';
 import { TermsAndConditions } from './components/TermsAndConditions';
 import { InterviewQuestionPredictor } from './components/InterviewQuestionPredictor';
 
+import { useRecruiterData } from './src/hooks/useRecruiterData';
+import { RefreshCw } from 'lucide-react';
+
 const App: React.FC = () => {
-  const [activePortal, setActivePortal] = useState<'seeker' | 'recruiter'>('seeker');
+  const [user, setUser] = useState<User | null>(null);
+  const { profile, updateProfile, loading: profileLoading } = useFirestoreSync(user);
+
+  const { clearAllData: clearRecruiterData } = useRecruiterData(user);
+  const { clearAllData: clearInterviewData, saveInterview } = useInterviewData(user);
+
+  useEffect(() => {
+    if (user) {
+      const sessionKey = `app_session_cleared_${user.uid}`;
+      if (!sessionStorage.getItem(sessionKey)) {
+        clearRecruiterData();
+        clearInterviewData();
+        sessionStorage.setItem(sessionKey, 'true');
+      }
+    }
+  }, [user]);
+
+  // Track time spent
+  useEffect(() => {
+    if (!user || !profile) return;
+
+    const interval = setInterval(() => {
+      const currentMinutes = profile.timeSpentMinutes || 0;
+      updateProfile({ timeSpentMinutes: currentMinutes + 1 });
+    }, 60000); // Every minute
+
+    return () => clearInterval(interval);
+  }, [user, profile?.timeSpentMinutes]);
+  const [isAuthPageActive, setIsAuthPageActive] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authRole, setAuthRole] = useState<'jobseeker' | 'recruiter'>('jobseeker');
+
+  const [activePortal, setActivePortal] = useState<'seeker' | 'recruiter' | 'admin' | 'profile'>('seeker');
   const [showTerms, setShowTerms] = useState(false);
   const [seekerTool, setSeekerTool] = useState<'analyzer' | 'interview'>('analyzer');
+
+  useEffect(() => {
+    // Force logout on app refresh/initial load as requested
+    const forceLogout = async () => {
+      try {
+        await auth.signOut();
+      } catch (err) {
+        console.error("Error during force logout on refresh:", err);
+      }
+    };
+    forceLogout();
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        setIsAuthPageActive(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handlePortalChange = (portal: 'seeker' | 'recruiter' | 'admin' | 'profile') => {
+    if (portal === 'recruiter' && !user) {
+      setAuthRole('recruiter');
+      setAuthMode('login');
+      setIsAuthPageActive(true);
+      return;
+    }
+    if (portal === 'admin' && profile?.role !== 'admin') {
+      return;
+    }
+    setActivePortal(portal);
+    setShowTerms(false);
+  };
+
+  const handleToolChange = (tool: 'analyzer' | 'interview') => {
+    if (tool === 'interview' && !user) {
+      setAuthRole('jobseeker');
+      setAuthMode('login');
+      setIsAuthPageActive(true);
+      return;
+    }
+    setSeekerTool(tool);
+  };
 
   const [jobDescription, setJobDescription] = useState<string>('');
   const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -58,6 +144,14 @@ const App: React.FC = () => {
 
       const result = await analyzeResume(jobDescription, resumePayload);
       setAnalysisResult(result);
+      if (user) {
+        await saveInterview({
+          type: 'analysis',
+          jobDescription,
+          resumeName: resumeFile.name,
+          result
+        });
+      }
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? `An error occurred: ${err.message}` : 'An unknown error occurred.');
@@ -87,11 +181,6 @@ const App: React.FC = () => {
   
   const isButtonDisabled = !jobDescription || !resumeFile || isLoading;
 
-  const handlePortalChange = (portal: 'seeker' | 'recruiter') => {
-    setActivePortal(portal);
-    setShowTerms(false);
-  };
-
   const handleShowTerms = () => {
     setShowTerms(true);
   };
@@ -107,21 +196,47 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-system-bg font-sans selection:bg-system-blue/20 selection:text-system-blue flex flex-col">
-      <Header 
-        activePortal={activePortal} 
-        onPortalChange={handlePortalChange} 
-        onShowTerms={handleShowTerms}
-        onLogoClick={handleLogoClick}
-      />
+      {isAuthPageActive ? (
+        <AuthPage 
+          onBack={() => setIsAuthPageActive(false)} 
+          initialMode={authMode}
+          role={authRole}
+          onSuccess={() => {
+            setIsAuthPageActive(false);
+            if (authRole === 'recruiter') setActivePortal('recruiter');
+            if (authRole === 'jobseeker' && seekerTool === 'analyzer') setSeekerTool('interview');
+          }}
+        />
+      ) : (
+        <>
+          <Header 
+            activePortal={activePortal !== 'profile' ? activePortal : undefined} 
+            onPortalChange={handlePortalChange} 
+            onShowTerms={handleShowTerms}
+            onLogoClick={handleLogoClick}
+            user={user}
+            profile={profile}
+            onLoginClick={() => { setAuthRole('jobseeker'); setAuthMode('login'); setIsAuthPageActive(true); }}
+            onProfileClick={() => setActivePortal('profile')}
+          />
 
-      <main className="container mx-auto px-4 sm:px-6 py-6 sm:py-10 max-w-7xl flex-1 flex flex-col">
+          <main className="container mx-auto px-4 sm:px-6 py-6 sm:py-10 max-w-7xl flex-1 flex flex-col">
         {showTerms ? (
           <TermsAndConditions />
         ) : (
           <>
             <div className="flex-1">
-                {activePortal === 'recruiter' ? (
-                    <RecruiterDashboard />
+                {activePortal === 'profile' ? (
+                    <ProfilePage 
+                        profile={profile} 
+                        user={user}
+                        onUpdate={updateProfile}
+                        onBack={() => setActivePortal('seeker')}
+                    />
+                ) : activePortal === 'admin' ? (
+                    <AdminDashboard onBack={() => setActivePortal('seeker')} />
+                ) : activePortal === 'recruiter' ? (
+                    <RecruiterDashboard user={user} />
                 ) : (
                   <div className="max-w-4xl mx-auto transition-all duration-500 ease-in-out">
                     <div className="space-y-6 sm:space-y-8">
@@ -143,7 +258,7 @@ const App: React.FC = () => {
                           <div className="flex justify-center w-full">
                             <div className="bg-gray-200/50 p-1 rounded-xl flex sm:inline-flex backdrop-blur-md w-full sm:w-auto">
                                  <button 
-                                    onClick={() => setSeekerTool('analyzer')}
+                                    onClick={() => handleToolChange('analyzer')}
                                     className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
                                         seekerTool === 'analyzer' 
                                         ? 'bg-white text-gray-900 shadow-sm scale-100' 
@@ -153,7 +268,7 @@ const App: React.FC = () => {
                                     Resume Analyzer
                                  </button>
                                  <button 
-                                    onClick={() => setSeekerTool('interview')}
+                                    onClick={() => handleToolChange('interview')}
                                     className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
                                         seekerTool === 'interview' 
                                         ? 'bg-white text-gray-900 shadow-sm scale-100' 
@@ -190,6 +305,7 @@ const App: React.FC = () => {
                             <InterviewQuestionPredictor 
                                 initialJobDescription={jobDescription}
                                 resumeFile={resumeFile}
+                                user={user}
                             />
                           )}
                         </div>
@@ -205,6 +321,10 @@ const App: React.FC = () => {
                             onUpdateResume={handleUpdateResume}
                             resumeFile={resumeFile}
                             jobDescription={jobDescription}
+                            onAskAI={() => {
+                                setSeekerTool('interview');
+                                setActiveTab('input');
+                            }}
                         />
                       )}
                     </div>
@@ -227,7 +347,9 @@ const App: React.FC = () => {
           </>
         )}
       </main>
-    </div>
+    </>
+  )}
+</div>
   );
 };
 
