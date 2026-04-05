@@ -16,12 +16,14 @@ import { Candidate, JDAnalysis } from '../../types';
 
 export const useRecruiterData = (user: any) => {
  const [candidates, setCandidates] = useState<Candidate[]>([]);
+ const [history, setHistory] = useState<Candidate[]>([]);
  const [currentJD, setCurrentJD] = useState<{jd: string, analysis: JDAnalysis} | null>(null);
  const [loading, setLoading] = useState(true);
 
  useEffect(() => {
    if (!user) {
      setCandidates([]);
+     setHistory([]);
      setCurrentJD(null);
      setLoading(false);
      return;
@@ -43,8 +45,10 @@ export const useRecruiterData = (user: any) => {
          id: doc.id,
          file: null 
        } as Candidate;
-     }).filter(c => !c.isHistory);
-     setCandidates(fetchedCandidates);
+     });
+     
+     setCandidates(fetchedCandidates.filter(c => !c.isHistory));
+     setHistory(fetchedCandidates.filter(c => c.isHistory).slice(0, 20));
    }, (error) => {
      console.error("Error fetching candidates:", error);
    });
@@ -102,7 +106,10 @@ export const useRecruiterData = (user: any) => {
    const batch = writeBatch(db);
    const snapshot = await getDocs(collection(db, `users/${uid}/candidates`));
    snapshot.docs.forEach(d => {
-     batch.delete(doc(db, `users/${uid}/candidates/${d.id}`));
+     batch.update(d.ref, {
+       isHistory: true,
+       updatedAt: new Date().toISOString()
+     });
    });
    
    // Clear JD analysis
@@ -115,6 +122,7 @@ export const useRecruiterData = (user: any) => {
 
  return {
    candidates,
+   history,
    currentJD,
    loading,
    saveCandidate,

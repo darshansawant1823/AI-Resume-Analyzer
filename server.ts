@@ -1,23 +1,34 @@
 
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
-import { initializeApp, cert } from 'firebase-admin/app';
+import path from "path";
+import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import fs from 'fs';
 
 dotenv.config();
 
-// Initialize Firebase Admin (for OTP storage/verification)
-// We'll use the same project ID as the client
-const firebaseAdminApp = initializeApp({
-  projectId: "airesumeanalyse",
-});
-const db = getFirestore(firebaseAdminApp);
+let db: any;
+
+try {
+  // Initialize Firebase Admin (for OTP storage/verification)
+  // We'll use the project ID from environment or fallback to the one in src/firebase.ts
+  const projectId = process.env.FIREBASE_PROJECT_ID || "airesumeanalyse";
+  const firebaseAdminApp = initializeApp({
+    projectId: projectId,
+  });
+  db = getFirestore(firebaseAdminApp);
+  console.log(`Firebase Admin initialized for project: ${projectId}`);
+} catch (error) {
+  console.error("Failed to initialize Firebase Admin:", error);
+  // We don't exit here to allow the server to start even if Firebase is misconfigured
+  // but API routes using 'db' will fail gracefully
+}
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   app.use(express.json());
 
@@ -25,6 +36,10 @@ async function startServer() {
   app.post("/api/auth/send-otp", async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: "Email is required" });
+
+    if (!db) {
+      return res.status(503).json({ error: "Firebase service is currently unavailable. Please try again later." });
+    }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
@@ -83,6 +98,10 @@ async function startServer() {
     const { email, otp } = req.body;
     if (!email || !otp) return res.status(400).json({ error: "Email and OTP are required" });
 
+    if (!db) {
+      return res.status(503).json({ error: "Firebase service is currently unavailable. Please try again later." });
+    }
+
     try {
       const otpDoc = await db.collection("otps").doc(email).get();
       if (!otpDoc.exists) return res.status(400).json({ error: "OTP not found or expired" });
@@ -107,6 +126,7 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -114,14 +134,24 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     // Serve static files in production
-    app.use(express.static("dist"));
-    app.get("*", (req, res) => {
-      res.sendFile("dist/index.html", { root: "." });
-    });
+    const distPath = path.join(process.cwd(), "dist");
+    
+    if (fs.existsSync(distPath)) {
+      console.log(`Serving static files from: ${distPath}`);
+      app.use(express.static(distPath));
+      app.get("*all", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    } else {
+      console.error(`Warning: dist directory not found at ${distPath}. Build might have failed.`);
+      app.get("*all", (req, res) => {
+        res.status(500).send("Application is not built correctly. Please run 'npm run build'.");
+      });
+    }
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
   });
 }
 

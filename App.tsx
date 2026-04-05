@@ -7,7 +7,7 @@ import { useInterviewData } from './src/hooks/useInterviewData';
 import { AuthPage } from './src/components/AuthPage';
 import { ProfilePage } from './components/ProfilePage';
 import type { AnalysisResult } from './types';
-import { analyzeResume } from './services/geminiService';
+import { analyzeResume, extractTextFromFile } from './services/geminiService';
 import { Header } from './components/Header';
 import { JobDescriptionInput } from './components/JobDescriptionInput';
 import { ResumeUploader } from './components/ResumeUploader';
@@ -15,11 +15,16 @@ import { ResultsDisplay } from './components/ResultsDisplay';
 import { SparklesIcon } from './components/icons/SparklesIcon';
 import { RecruiterDashboard } from './components/RecruiterDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
-import { TermsAndConditions } from './components/TermsAndConditions';
+import { LegalPages } from './components/LegalPages';
 import { InterviewQuestionPredictor } from './components/InterviewQuestionPredictor';
 
 import { useRecruiterData } from './src/hooks/useRecruiterData';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, FileText, Trash2 as TrashIcon, Eye, X } from 'lucide-react';
+import type { ResumeEntry } from './types';
+
+import { Button } from './src/components/ui/button';
+import { Input } from './src/components/ui/input';
+import { Card, CardContent } from './src/components/ui/card';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -28,14 +33,10 @@ const App: React.FC = () => {
   const { clearAllData: clearRecruiterData } = useRecruiterData(user);
   const { clearAllData: clearInterviewData, saveInterview } = useInterviewData(user);
 
+  // Removed session clearing logic to preserve data accuracy
   useEffect(() => {
     if (user) {
-      const sessionKey = `app_session_cleared_${user.uid}`;
-      if (!sessionStorage.getItem(sessionKey)) {
-        clearRecruiterData();
-        clearInterviewData();
-        sessionStorage.setItem(sessionKey, 'true');
-      }
+      // Data is now persisted across sessions
     }
   }, [user]);
 
@@ -55,20 +56,22 @@ const App: React.FC = () => {
   const [authRole, setAuthRole] = useState<'jobseeker' | 'recruiter'>('jobseeker');
 
   const [activePortal, setActivePortal] = useState<'seeker' | 'recruiter' | 'admin' | 'profile'>('seeker');
-  const [showTerms, setShowTerms] = useState(false);
+  const [legalPage, setLegalPage] = useState<null | 'terms' | 'privacy' | 'refund'>(null);
   const [seekerTool, setSeekerTool] = useState<'analyzer' | 'interview'>('analyzer');
+  
+  const [currentQuote, setCurrentQuote] = useState(0);
+  const quotes = [
+    "Your value doesn't decrease based on someone's inability to see your worth.",
+    "The only way to do great work is to love what you do. — Steve Jobs",
+    "Opportunities don't happen, you create them. — Chris Grosser",
+    "Believe you can and you're halfway there. — Theodore Roosevelt",
+    "Don't wait for the right opportunity: create it. — George Bernard Shaw",
+    "Success is not final, failure is not fatal: it is the courage to continue that counts. — Winston Churchill",
+    "Your dream job is out there. Let's make sure your resume shows why you're the one."
+  ];
 
   useEffect(() => {
-    // Force logout on app refresh/initial load as requested
-    const forceLogout = async () => {
-      try {
-        await auth.signOut();
-      } catch (err) {
-        console.error("Error during force logout on refresh:", err);
-      }
-    };
-    forceLogout();
-
+    // Removed force logout on refresh to maintain user session
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -89,7 +92,7 @@ const App: React.FC = () => {
       return;
     }
     setActivePortal(portal);
-    setShowTerms(false);
+    setLegalPage(null);
   };
 
   const handleToolChange = (tool: 'analyzer' | 'interview') => {
@@ -108,6 +111,37 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'input' | 'results'>('input');
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isLoading) {
+      interval = setInterval(() => {
+        setCurrentQuote((prev) => (prev + 1) % quotes.length);
+      }, 3500);
+    }
+    return () => clearInterval(interval);
+  }, [isLoading]);
+  
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [missingContactInfo, setMissingContactInfo] = useState<{email: boolean, phone: boolean}>({ email: false, phone: false });
+  const [contactForm, setContactForm] = useState({ email: '', phone: '' });
+
+  const handleFixContactInfo = () => {
+    if (!analysisResult) return;
+    
+    let updatedResume = analysisResult.custom_resume_text;
+    const contactLine = `\nEmail: ${contactForm.email} | Phone: ${contactForm.phone}\n`;
+    
+    // Inject contact info at the top of the resume text
+    updatedResume = contactLine + updatedResume;
+    
+    setAnalysisResult({
+      ...analysisResult,
+      custom_resume_text: updatedResume,
+      contact_info_missing: { email: false, phone: false }
+    });
+    setShowContactModal(false);
+  };
   
   const fileToBase64 = (file: File): Promise<{base64Data: string; mimeType: string}> => {
     return new Promise((resolve, reject) => {
@@ -122,9 +156,24 @@ const App: React.FC = () => {
     });
   };
 
+  const [selectedResumeId, setSelectedResumeId] = useState<string | null>(null);
+  const [viewingResume, setViewingResume] = useState<ResumeEntry | null>(null);
+
+  useEffect(() => {
+    if (profile?.resumes && profile.resumes.length > 0) {
+      // Default to the latest uploaded resume if none selected
+      if (!selectedResumeId) {
+        const latest = [...profile.resumes].sort((a, b) => 
+          new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+        )[0];
+        setSelectedResumeId(latest.id);
+      }
+    }
+  }, [profile?.resumes]);
+
   const handleAnalyze = useCallback(async () => {
-    if (!jobDescription || !resumeFile) {
-      setError('Please provide both a job description and a resume file.');
+    if (!jobDescription || (!resumeFile && !selectedResumeId)) {
+      setError('Please provide both a job description and a resume.');
       return;
     }
     setError(null);
@@ -134,21 +183,60 @@ const App: React.FC = () => {
 
     try {
       let resumePayload: { text?: string; base64Data?: string; mimeType?: string; } = {};
-      if (resumeFile.type.startsWith('image/') || resumeFile.type === 'application/pdf') {
-        const { base64Data, mimeType } = await fileToBase64(resumeFile);
-        resumePayload = { base64Data, mimeType };
-      } else {
-        const text = await resumeFile.text();
-        resumePayload = { text };
+      let currentResumeName = '';
+      
+      if (resumeFile) {
+        // New file upload
+        let extractedText = '';
+        if (resumeFile.type.startsWith('image/') || resumeFile.type === 'application/pdf') {
+          const { base64Data, mimeType } = await fileToBase64(resumeFile);
+          extractedText = await extractTextFromFile({ base64Data, mimeType });
+        } else {
+          extractedText = await resumeFile.text();
+        }
+        
+        resumePayload = { text: extractedText };
+        currentResumeName = resumeFile.name;
+        
+        // Add to resumes list in profile
+        if (user) {
+          const newResume: ResumeEntry = {
+            id: Math.random().toString(36).substr(2, 9),
+            name: resumeFile.name,
+            text: extractedText,
+            uploadedAt: new Date().toISOString()
+          };
+          
+          const currentResumes = profile?.resumes || [];
+          await updateProfile({ 
+            resumes: [newResume, ...currentResumes],
+            lastResumeText: extractedText, // Keep for backward compatibility if needed
+            lastResumeName: resumeFile.name
+          });
+          setSelectedResumeId(newResume.id);
+          setResumeFile(null); // Clear the file input after successful upload/analysis
+        }
+      } else if (selectedResumeId && profile?.resumes) {
+        const selected = profile.resumes.find(r => r.id === selectedResumeId);
+        if (selected) {
+          resumePayload = { text: selected.text };
+          currentResumeName = selected.name;
+        }
       }
 
       const result = await analyzeResume(jobDescription, resumePayload);
       setAnalysisResult(result);
+      
+      if (result.contact_info_missing.email || result.contact_info_missing.phone) {
+        setMissingContactInfo(result.contact_info_missing);
+        setShowContactModal(true);
+      }
+
       if (user) {
         await saveInterview({
           type: 'analysis',
           jobDescription,
-          resumeName: resumeFile.name,
+          resumeName: resumeFile?.name || profile?.lastResumeName || 'Cached Resume',
           result
         });
       }
@@ -159,17 +247,14 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [jobDescription, resumeFile]);
+  }, [jobDescription, resumeFile, selectedResumeId, profile, user, updateProfile, saveInterview]);
 
   const handleReset = () => {
-    setJobDescription('');
-    setResumeFile(null);
+    // Keep jobDescription and resumeFile as requested by user
     setAnalysisResult(null);
     setError(null);
     setIsLoading(false);
     setActiveTab('input');
-    const fileInput = document.getElementById('resume-upload') as HTMLInputElement;
-    if(fileInput) fileInput.value = '';
   };
 
   const handleUpdateResume = (newText: string) => {
@@ -179,16 +264,16 @@ const App: React.FC = () => {
     });
   };
   
-  const isButtonDisabled = !jobDescription || !resumeFile || isLoading;
+  const isButtonDisabled = !jobDescription || (!resumeFile && !selectedResumeId) || isLoading;
 
   const handleShowTerms = () => {
-    setShowTerms(true);
+    setLegalPage('terms');
   };
 
   const handleLogoClick = () => {
     setActivePortal('seeker');
     setSeekerTool('analyzer');
-    setShowTerms(false);
+    setLegalPage(null);
     setActiveTab('input');
     // Note: We preserve the current input (JD/Resume) state to avoid accidental data loss,
     // but reset the view to the main landing input screen.
@@ -221,8 +306,8 @@ const App: React.FC = () => {
           />
 
           <main className="container mx-auto px-4 sm:px-6 py-6 sm:py-10 max-w-7xl flex-1 flex flex-col">
-        {showTerms ? (
-          <TermsAndConditions />
+        {legalPage ? (
+          <LegalPages type={legalPage} onBack={() => setLegalPage(null)} />
         ) : (
           <>
             <div className="flex-1">
@@ -256,8 +341,9 @@ const App: React.FC = () => {
                           
                           {/* Seeker Tool Tabs */}
                           <div className="flex justify-center w-full">
-                            <div className="bg-gray-200/50 p-1 rounded-xl flex sm:inline-flex backdrop-blur-md w-full sm:w-auto">
-                                 <button 
+                            <div className="bg-muted/50 p-1 rounded-xl flex sm:inline-flex backdrop-blur-md w-full sm:w-auto">
+                                 <Button 
+                                    variant={seekerTool === 'analyzer' ? 'default' : 'ghost'}
                                     onClick={() => handleToolChange('analyzer')}
                                     className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
                                         seekerTool === 'analyzer' 
@@ -266,8 +352,9 @@ const App: React.FC = () => {
                                     }`}
                                  >
                                     Resume Analyzer
-                                 </button>
-                                 <button 
+                                 </Button>
+                                 <Button 
+                                    variant={seekerTool === 'interview' ? 'default' : 'ghost'}
                                     onClick={() => handleToolChange('interview')}
                                     className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
                                         seekerTool === 'interview' 
@@ -276,74 +363,268 @@ const App: React.FC = () => {
                                     }`}
                                  >
                                     AI Interview Prep
-                                 </button>
+                                 </Button>
                             </div>
                           </div>
 
                           {seekerTool === 'analyzer' ? (
                             <>
-                              <div className="bg-white rounded-3xl p-1 shadow-apple-card border border-white/60">
-                                <div className="p-4 sm:p-8 space-y-6 sm:space-y-8">
+                              <Card className="rounded-3xl p-1 shadow-apple-card border border-white/60">
+                                <CardContent className="p-4 sm:p-8 space-y-6 sm:space-y-8">
                                   <JobDescriptionInput value={jobDescription} onChange={setJobDescription} />
                                   <div className="h-px bg-gray-100 w-full"></div>
-                                  <ResumeUploader file={resumeFile} onFileChange={setResumeFile} />
-                                </div>
-                              </div>
-                              
-                              <div className="flex justify-center pt-2 sm:pt-4">
-                                <button
-                                  onClick={handleAnalyze}
-                                  disabled={isButtonDisabled}
-                                  className="group relative flex items-center justify-center gap-2 w-full sm:w-auto px-8 py-4 bg-system-blue text-white text-lg font-semibold rounded-full shadow-apple-button hover:bg-system-blue-hover hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-none min-w-[240px]"
-                                >
-                                  <SparklesIcon className="w-5 h-5 transition-transform group-hover:rotate-12" />
-                                  <span>{isLoading ? 'Analyzing...' : 'Analyze Resume'}</span>
-                                </button>
-                              </div>
-                            </>
-                          ) : (
-                            <InterviewQuestionPredictor 
-                                initialJobDescription={jobDescription}
-                                resumeFile={resumeFile}
-                                user={user}
-                            />
-                          )}
-                        </div>
-                      )}
-                      
-                      {activeTab === 'results' && (
-                          <ResultsDisplay 
-                            result={analysisResult} 
-                            isLoading={isLoading} 
-                            error={error} 
-                            onResumeReset={handleReset} 
-                            originalResumeName={resumeFile?.name}
-                            onUpdateResume={handleUpdateResume}
-                            resumeFile={resumeFile}
-                            jobDescription={jobDescription}
-                            onAskAI={() => {
-                                setSeekerTool('interview');
-                                setActiveTab('input');
-                            }}
-                        />
-                      )}
-                    </div>
-                  </div>
-                )}
-            </div>
+                                  {profile?.resumes?.map((resume) => (
+                                    <div 
+                                      key={resume.id}
+                                      onClick={() => setSelectedResumeId(resume.id)}
+                                      className={`mb-3 p-4 rounded-2xl border flex items-center justify-between animate-in fade-in slide-in-from-top-2 cursor-pointer transition-all ${
+                                        selectedResumeId === resume.id 
+                                          ? 'bg-blue-50/80 border-system-blue/30 shadow-sm' 
+                                          : 'bg-gray-50/50 border-gray-100 hover:border-gray-200'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-4">
+                                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                                          selectedResumeId === resume.id ? 'border-system-blue' : 'border-gray-300'
+                                        }`}>
+                                          {selectedResumeId === resume.id && <div className="w-2.5 h-2.5 bg-system-blue rounded-full" />}
+                                        </div>
+                                        <div className="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center text-system-blue">
+                                          <FileText className="w-5 h-5" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-bold text-gray-900 truncate">{resume.name}</p>
+                                          <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">
+                                            {new Date(resume.uploadedAt).toLocaleDateString()}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <Button 
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setViewingResume(resume);
+                                          }}
+                                          className="p-1.5 text-gray-400 hover:text-system-blue transition-colors"
+                                          title="View Resume"
+                                        >
+                                          <Eye className="w-4 h-4" />
+                                        </Button>
+                                        <Button 
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            if (user) {
+                                              await updateProfile({ 
+                                                resumes: profile?.resumes?.filter(r => r.id !== resume.id) || []
+                                              });
+                                              if (selectedResumeId === resume.id) setSelectedResumeId(null);
+                                            }
+                                          }}
+                                          className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                                          title="Delete Resume"
+                                        >
+                                          <TrashIcon className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ))}
 
-            {/* Unified Footer */}
+{(!profile?.resumes || profile.resumes.length === 0 || !selectedResumeId) && (
+  <ResumeUploader file={resumeFile} onFileChange={setResumeFile} />
+)}
+
+<div className="text-center py-4">
+  <Button 
+    variant="link"
+    onClick={() => {
+      setResumeFile(null);
+      setSelectedResumeId(null);
+    }}
+    className="text-xs text-system-blue font-bold hover:underline underline-offset-4"
+  >
+    Upload a new resume
+  </Button>
+</div>
+</CardContent>
+</Card>
+
+<div className="flex justify-center pt-2 sm:pt-4">
+<Button
+onClick={handleAnalyze}
+disabled={isButtonDisabled}
+className="group relative flex items-center justify-center gap-2 w-full sm:w-auto px-8 py-4 bg-system-blue text-white text-lg font-semibold rounded-full shadow-apple-button hover:bg-system-blue-hover hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-none min-w-[240px]"
+>
+<SparklesIcon className="w-5 h-5 transition-transform group-hover:rotate-12" />
+<span>{isLoading ? 'Analyzing...' : 'Analyze Resume'}</span>
+</Button>
+</div>
+</>
+) : (
+<InterviewQuestionPredictor 
+    initialJobDescription={jobDescription}
+    resumeFile={resumeFile}
+    user={user}
+/>
+)}
+</div>
+)}
+
+{activeTab === 'results' && (
+  <ResultsDisplay 
+    result={analysisResult} 
+    isLoading={isLoading} 
+    error={error} 
+    onResumeReset={handleReset} 
+    originalResumeName={resumeFile?.name || profile?.resumes?.find(r => r.id === selectedResumeId)?.name}
+    onUpdateResume={handleUpdateResume}
+    resumeFile={resumeFile}
+    jobDescription={jobDescription}
+    user={user}
+    onAskAI={() => {
+        setSeekerTool('interview');
+        setActiveTab('input');
+    }}
+/>
+)}
+</div>
+</div>
+)}
+</div>
+
+{/* Resume Viewer Modal */}
+{viewingResume && (
+<div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+<div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+<div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+  <div className="flex items-center gap-3">
+    <div className="p-2 bg-white rounded-xl shadow-sm">
+      <FileText className="w-5 h-5 text-system-blue" />
+    </div>
+    <div>
+      <h3 className="text-lg font-bold text-gray-900">{viewingResume.name}</h3>
+      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Uploaded on {new Date(viewingResume.uploadedAt).toLocaleDateString()}</p>
+    </div>
+  </div>
+  <Button 
+    variant="ghost"
+    size="icon"
+    onClick={() => setViewingResume(null)}
+    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+  >
+    <X className="w-5 h-5 text-gray-400" />
+  </Button>
+</div>
+<div className="flex-1 overflow-y-auto p-8 bg-white">
+  <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700 leading-relaxed">
+    {viewingResume.text}
+  </pre>
+</div>
+<div className="p-6 border-t border-gray-100 flex justify-end bg-gray-50/50">
+  <Button 
+    onClick={() => setViewingResume(null)}
+    className="px-8 py-2.5 bg-system-blue text-white font-bold rounded-xl hover:bg-system-blue-hover transition-all"
+  >
+    Close Preview
+  </Button>
+</div>
+</div>
+</div>
+)}
+
+{/* Unified Footer */}
             <div className="mt-12 border-t border-gray-200/60 pt-8 pb-4 text-center">
                 <p className="text-[10px] text-gray-400 font-medium tracking-wide uppercase mb-3">
                     Secure Processing • Encrypted in Transit • Private
                 </p>
-                <button 
-                    onClick={handleShowTerms}
-                    className="text-xs text-gray-500 hover:text-system-blue transition-colors hover:underline underline-offset-2"
-                >
-                    Terms & Conditions
-                </button>
+                <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
+                  <Button 
+                      variant="link"
+                      onClick={() => setLegalPage('terms')}
+                      className="text-xs text-gray-500 hover:text-system-blue transition-colors hover:underline underline-offset-2 h-auto p-0"
+                  >
+                      Terms & Conditions
+                  </Button>
+                  <Button 
+                      variant="link"
+                      onClick={() => setLegalPage('privacy')}
+                      className="text-xs text-gray-500 hover:text-system-blue transition-colors hover:underline underline-offset-2 h-auto p-0"
+                  >
+                      Privacy Policy
+                  </Button>
+                  <Button 
+                      variant="link"
+                      onClick={() => setLegalPage('refund')}
+                      className="text-xs text-gray-500 hover:text-system-blue transition-colors hover:underline underline-offset-2 h-auto p-0"
+                  >
+                      Refund Policy
+                  </Button>
+                </div>
             </div>
+
+            {/* Contact Info Modal */}
+            {showContactModal && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+                <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md p-8 animate-in zoom-in-95 duration-300">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-amber-50 rounded-xl">
+                      <SparklesIcon className="w-5 h-5 text-amber-500" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900">Missing Contact Info</h3>
+                  </div>
+                  
+                  <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                    We noticed your resume is missing some contact details. Adding them helps recruiters reach you faster.
+                  </p>
+                  
+                  <div className="space-y-4 mb-8">
+                    {missingContactInfo.email && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 pl-1">Email Address</label>
+                        <Input 
+                          type="email" 
+                          value={contactForm.email}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, email: e.target.value }))}
+                          placeholder="e.g. name@example.com"
+                          className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-system-blue/20 transition-all"
+                        />
+                      </div>
+                    )}
+                    {missingContactInfo.phone && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 pl-1">Phone Number</label>
+                        <Input 
+                          type="tel" 
+                          value={contactForm.phone}
+                          onChange={(e) => setContactForm(prev => ({ ...prev, phone: e.target.value }))}
+                          placeholder="e.g. +1 234 567 890"
+                          className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-system-blue/20 transition-all"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <Button 
+                      variant="secondary"
+                      onClick={() => setShowContactModal(false)}
+                      className="flex-1 px-6 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition-all"
+                    >
+                      Skip
+                    </Button>
+                    <Button 
+                      onClick={handleFixContactInfo}
+                      className="flex-1 px-6 py-3 bg-system-blue text-white font-bold rounded-xl hover:bg-system-blue-hover transition-all shadow-lg shadow-system-blue/20"
+                    >
+                      Update Resume
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>

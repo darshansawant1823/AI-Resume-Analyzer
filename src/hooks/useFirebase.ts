@@ -8,6 +8,13 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
+export interface ResumeEntry {
+  id: string;
+  name: string;
+  text: string;
+  uploadedAt: string;
+}
+
 export interface UserProfile {
   fullName: string;
   jobRole: string;
@@ -16,6 +23,10 @@ export interface UserProfile {
   phoneNumber?: string;
   role: 'jobseeker' | 'recruiter' | 'admin';
   timeSpentMinutes?: number;
+  createdAt?: string;
+  lastResumeText?: string;
+  lastResumeName?: string;
+  resumes?: ResumeEntry[];
 }
 
 export const useFirestoreSync = (user: any) => {

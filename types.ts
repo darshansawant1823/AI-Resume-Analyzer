@@ -1,4 +1,25 @@
 
+export interface ResumeEntry {
+  id: string;
+  name: string;
+  text: string;
+  uploadedAt: string;
+}
+
+export interface UserProfile {
+  fullName: string;
+  jobRole: string;
+  experience: string;
+  email: string;
+  phoneNumber?: string;
+  role: 'jobseeker' | 'recruiter' | 'admin';
+  timeSpentMinutes?: number;
+  createdAt?: string;
+  lastResumeText?: string;
+  lastResumeName?: string;
+  resumes?: ResumeEntry[];
+}
+
 export interface ScoreDetail {
   score: number;
   details: string[];
@@ -13,6 +34,7 @@ export interface Breakdown {
   ats_readiness: ScoreDetail;
   soft_skills: ScoreDetail;
   red_flags: ScoreDetail;
+  growth_potential: ScoreDetail;
 }
 
 export interface MissingItem {
@@ -26,6 +48,13 @@ export interface RecruiterScanResult {
   missedItems: string[];
   redFlags: string[];
   recruiterImpression: string;
+  usage?: UsageMetadata;
+}
+
+export interface UsageMetadata {
+  promptTokenCount: number;
+  candidatesTokenCount: number;
+  totalTokenCount: number;
 }
 
 export interface AnalysisResult {
@@ -39,6 +68,35 @@ export interface AnalysisResult {
   cover_letter: string;
   top_3_rewritten_achievements: string[];
   explanations: string[];
+  highlight_keywords: string[];
+  career_path_suggestions: {
+    role: string;
+    reason: string;
+    skills_to_add: string[];
+    roadmap: { phase: string; duration: string; tasks: string[] }[];
+    salary_impact: string;
+    ease_of_pivot: number;
+  }[];
+  market_fit: {
+    industry: string;
+    score: number;
+    reason: string;
+  }[];
+  skill_gaps: {
+    skill: string;
+    priority: 'high' | 'medium' | 'low';
+    recommendation: string;
+  }[];
+  interview_readiness: {
+    score: number;
+    feedback: string;
+    top_questions: string[];
+  };
+  contact_info_missing: {
+    email: boolean;
+    phone: boolean;
+  };
+  usage?: UsageMetadata;
 }
 
 // --- Recruiter Portal Types ---
@@ -72,6 +130,7 @@ export interface CandidateAnalysis {
   red_flags: string[];
   strengths: string[];
   summary: string;
+  explanations: string[];
   training_estimate: string; // e.g., "2 weeks to upskill"
   years_experience: number;
   seniority_level: string;
@@ -79,15 +138,12 @@ export interface CandidateAnalysis {
   phone?: string;
   address?: string;
   jobType?: string;
+  category?: string;
+  outreach_draft?: string;
   // New fields for Comparison
-  breakdown?: {
-    core_skills: number;
-    title_alignment: number;
-    experience_relevance: number;
-    ats_readiness: number;
-    soft_skills: number;
-  };
-  gaps?: string[];
+  breakdown: Breakdown;
+  gaps: string[];
+  usage?: UsageMetadata;
 }
 
 export interface Candidate {

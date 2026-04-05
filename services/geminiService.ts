@@ -1,8 +1,9 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import type { 
   Candidate,
   AnalysisResult, 
+  ScoreDetail,
   RecruiterScanResult, 
   CandidateAnalysis, 
   JDAnalysis, 
@@ -24,10 +25,12 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-// Using gemini-3-pro-preview for advanced reasoning and complex tasks
-const model = 'gemini-3-pro-preview';
+// Using gemini-3.1-pro-preview for advanced reasoning and complex tasks
+const PRO_MODEL = 'gemini-3.1-pro-preview';
+// Using gemini-3-flash-preview for speed and cost-efficiency
+const FLASH_MODEL = 'gemini-3-flash-preview';
 
-const buildPrompt = (jobDescription: string): string => {
+const buildSystemInstruction = (): string => {
   return `
     You are an expert product/UX engineer and a world-class resume/job-matching AI assistant. Your task is to analyze a provided resume against a job description and produce a detailed analysis in a specific JSON format.
 
@@ -40,6 +43,7 @@ const buildPrompt = (jobDescription: string): string => {
         - **NEVER** change employment dates or add "missing" years.
     3.  **STYLING ONLY**: Your "optimization" should be limited to rephrasing existing bullet points for better impact, clarity, and ATS keyword prominence *of existing concepts only*. If the user is a bad fit, acknowledge it honestly.
     4.  **VERIFICATION**: In your internal monologue, cross-reference every claim in your output against the source resume. If it's not there, delete it.
+    5.  **BREAKDOWN ACCURACY**: Every score in the 'breakdown' must be strictly justified by the 'details' provided for that category. If a candidate is missing 50% of the required core skills, the 'core_skills' score MUST be 50 or lower. Do NOT default to high scores.
 
     **CONDITIONAL OPTIMIZATION RULE:**
     - If the candidate's core profile is fundamentally mismatched with the Job Description (e.g., "Not Eligible" verdict, match_score < 60):
@@ -58,43 +62,26 @@ const buildPrompt = (jobDescription: string): string => {
     - Soft skill & culture fit signals (5%)
     - Red flags (negative -5 to -15)
 
+    **IMPORTANT**: Each category in the 'breakdown' should be scored from 0 to 100. The 'match_score' is the weighted average of these scores (minus red flags).
+
     **THRESHOLDS:**
     - 80–100 => "Eligible"
     - 60–79 => "Borderline"
     - 0–59 => "Not Eligible"
 
-    **JOB DESCRIPTION:**
-    ---
-    ${jobDescription}
-    ---
-
-    **ANALYSIS TASK:**
-    1.  **Extract & Verify**: First, extract the candidate's actual work history and contact info.
-    2.  Analyze the extracted resume text against the job description.
-    3.  Compute the match score and sub-scores based on the provided logic.
-    4.  Generate a clear, itemized verdict and actionable suggestions.
-    5.  **Optimized Output**:
-        - If Eligible/Borderline: Rewrite the resume text and generate a cover letter based ONLY on source facts.
-        - If Not Eligible: Return empty strings for the rewritten resume and cover letter.
-    6.  Create a summary of the changes made.
-    7.  Generate a "cover line" (a one-sentence hook).
-    8.  Generate a **complete, professional cover letter** tailored to this specific job application (only if eligible).
-    9.  Rewrite top achievements if applicable.
-    10. Return a single JSON object with the specified schema.
-
-    **OUTPUT JSON SCHEMA (RETURN EXACTLY THIS):**
+    **OUTPUT JSON SCHEMA:**
     {
-      "match_score": number,
+      "match_score": number (0-100),
       "verdict": "Eligible"|"Borderline"|"Not Eligible",
       "breakdown": {
-        "core_skills": {"score": number, "details": [string]},
-        "title_alignment": {"score": number, "details": [string]},
-        "experience_relevance": {"score": number, "details": [string]},
-        "achievements": {"score": number, "details":[string]},
-        "education_certifications": {"score": number, "details":[string]},
-        "ats_readiness": {"score": number, "details":[string]},
-        "soft_skills": {"score": number, "details":[string]},
-        "red_flags": {"score": number, "details":[string]}
+        "core_skills": {"score": number (0-100), "details": [string]},
+        "title_alignment": {"score": number (0-100), "details": [string]},
+        "experience_relevance": {"score": number (0-100), "details": [string]},
+        "achievements": {"score": number (0-100), "details":[string]},
+        "education_certifications": {"score": number (0-100), "details":[string]},
+        "ats_readiness": {"score": number (0-100), "details":[string]},
+        "soft_skills": {"score": number (0-100), "details":[string]},
+        "red_flags": {"score": number (negative value, e.g. -10), "details":[string]}
       },
       "missing_items_prioritized": [
         {"type":"skill"|"certification"|"experience"|"keyword"|"format", "importance": "high"|"medium"|"low", "suggestion": "string"}
@@ -104,12 +91,58 @@ const buildPrompt = (jobDescription: string): string => {
       "cover_line": "string|null",
       "cover_letter": "string (The full text of the cover letter or empty string if not eligible)",
       "top_3_rewritten_achievements": ["string"],
-      "explanations": ["short human readable strings, each < 120 chars"]
+      "explanations": ["short human readable strings, each < 120 chars"],
+      "highlight_keywords": ["string (3-5 high-impact keywords from the JD that the candidate has)"],
+      "career_path_suggestions": [
+        {
+          "role": "string (alternative job title)",
+          "reason": "string (why this is a good pivot)",
+          "skills_to_add": ["string"],
+          "roadmap": [
+            {
+              "phase": "string (e.g., Phase 1: Knowledge)",
+              "duration": "string (e.g., 4 weeks)",
+              "tasks": ["string (specific actionable tasks)"]
+            }
+          ],
+          "salary_impact": "string (e.g., +20% or $120k avg)",
+          "ease_of_pivot": "number (0-100 score)"
+        }
+      ],
+      "market_fit": [
+        {
+          "industry": "string",
+          "score": number (0-100),
+          "reason": "string"
+        }
+      ],
+      "skill_gaps": [
+        {
+          "skill": "string",
+          "priority": "high"|"medium"|"low",
+          "recommendation": "string"
+        }
+      ],
+      "interview_readiness": {
+        "score": number (0-100),
+        "feedback": "string",
+        "top_questions": ["string"]
+      },
+      "contact_info_missing": {
+        "email": "boolean",
+        "phone": "boolean"
+      }
     }
+
+    CRITICAL CONSTRAINTS:
+    - NEVER add skills, tools, or experiences that are not explicitly mentioned in the source resume.
+    - If a skill is required by the JD but missing from the resume, list it in 'missing_items_prioritized' but DO NOT include it in the 'custom_resume_text'.
+    - Check for the presence of an email address and a phone number. Set the corresponding boolean in 'contact_info_missing' to true if they are missing.
+    - The match_score should be objective based on the resume's actual content.
   `;
 };
 
-const buildRecruiterScanPrompt = (jobDescription: string): string => {
+const buildRecruiterScanSystemInstruction = (): string => {
   return `
     You are a senior recruiter with 15 years of screening experience.
     Simulate a 6-second resume scan.
@@ -121,9 +154,6 @@ const buildRecruiterScanPrompt = (jobDescription: string): string => {
     2. Identify CRITICAL elements you would completely MISS in a 6-second scan (e.g., buried skills, bottom of page details).
     3. Identify RED FLAGS visible within 6 seconds (e.g., employment gaps, typos, weird formatting, irrelevant titles).
     4. Provide a short "recruiter impression" (max 30 words) summarizing your gut feeling.
-
-    JOB DESCRIPTION:
-    ${jobDescription}
 
     OUTPUT JSON ONLY.
 
@@ -142,12 +172,10 @@ export const analyzeResume = async (
   jobDescription: string, 
   resume: { text?: string; base64Data?: string; mimeType?: string; }
 ): Promise<AnalysisResult> => {
-  const prompt = buildPrompt(jobDescription);
   const contents = [];
 
   if (resume.text) {
-    contents.push({ text: `Here is the resume text:\n\n${resume.text}` });
-    contents.push({ text: prompt });
+    contents.push({ text: `JOB DESCRIPTION:\n${jobDescription}\n\nRESUME TEXT:\n${resume.text}` });
   } else if (resume.base64Data && resume.mimeType) {
     contents.push({
       inlineData: {
@@ -155,25 +183,76 @@ export const analyzeResume = async (
         mimeType: resume.mimeType,
       },
     });
-    contents.push({ text: prompt });
+    contents.push({ text: `JOB DESCRIPTION:\n${jobDescription}` });
   } else {
     throw new Error('Invalid resume data provided.');
   }
 
   try {
     const response = await ai.models.generateContent({
-      model,
+      model: PRO_MODEL,
       contents: [{ parts: contents }],
       config: {
-        thinkingConfig: { thinkingBudget: 32768 }, // Max thinking budget for verification
-        temperature: 0.0, // Strict adherence to instructions
+        systemInstruction: buildSystemInstruction(),
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        temperature: 0.0,
         responseMimeType: "application/json",
       }
     });
 
     const jsonString = response.text.trim();
-    const cleanedJsonString = jsonString.replace(/^```json\s*|```$/g, '');
-    const result: AnalysisResult = JSON.parse(cleanedJsonString);
+    // More robust JSON cleaning
+    const cleanedJsonString = jsonString.replace(/^```json\s*|```$/g, '').trim();
+    
+    let result: AnalysisResult;
+    try {
+      result = JSON.parse(cleanedJsonString);
+    } catch (parseError) {
+      console.error("JSON Parse Error:", parseError, "Raw Response:", jsonString);
+      throw new Error("The AI returned an invalid response format. Please try again.");
+    }
+    
+    // Validate required fields to prevent "details not loading"
+    const emptyScore: ScoreDetail = { score: 0, details: [] };
+    if (!result.match_score && result.match_score !== 0) result.match_score = 0;
+    if (!result.verdict) result.verdict = 'Not Eligible';
+    if (!result.explanations) result.explanations = [];
+    if (!result.missing_items_prioritized) result.missing_items_prioritized = [];
+    if (!result.highlight_keywords) result.highlight_keywords = [];
+    if (!result.career_path_suggestions) result.career_path_suggestions = [];
+    if (!result.market_fit) result.market_fit = [];
+    if (!result.skill_gaps) result.skill_gaps = [];
+    if (!result.interview_readiness) {
+      result.interview_readiness = {
+        score: 0,
+        feedback: "Analysis pending",
+        top_questions: []
+      };
+    }
+    if (!result.breakdown) {
+      result.breakdown = {
+        core_skills: emptyScore,
+        title_alignment: emptyScore,
+        experience_relevance: emptyScore,
+        achievements: emptyScore,
+        education_certifications: emptyScore,
+        ats_readiness: emptyScore,
+        soft_skills: emptyScore,
+        red_flags: emptyScore,
+        growth_potential: emptyScore
+      };
+    }
+    if (!result.custom_resume_text) result.custom_resume_text = "";
+    
+    // Add usage metadata
+    if (response.usageMetadata) {
+      result.usage = {
+        promptTokenCount: response.usageMetadata.promptTokenCount,
+        candidatesTokenCount: response.usageMetadata.candidatesTokenCount,
+        totalTokenCount: response.usageMetadata.totalTokenCount
+      };
+    }
+    
     return result;
   } catch (error) {
     console.error("Error calling Gemini API or parsing response:", error);
@@ -185,12 +264,10 @@ export const performRecruiterScan = async (
   jobDescription: string,
   resume: { text?: string; base64Data?: string; mimeType?: string; }
 ): Promise<RecruiterScanResult> => {
-  const prompt = buildRecruiterScanPrompt(jobDescription);
   const contents = [];
 
    if (resume.text) {
-    contents.push({ text: `Here is the resume text:\n\n${resume.text}` });
-    contents.push({ text: prompt });
+    contents.push({ text: `JOB DESCRIPTION:\n${jobDescription}\n\nRESUME TEXT:\n${resume.text}` });
   } else if (resume.base64Data && resume.mimeType) {
     contents.push({
       inlineData: {
@@ -198,16 +275,17 @@ export const performRecruiterScan = async (
         mimeType: resume.mimeType,
       },
     });
-    contents.push({ text: prompt });
+    contents.push({ text: `JOB DESCRIPTION:\n${jobDescription}` });
   } else {
     throw new Error('Invalid resume data provided.');
   }
 
   try {
     const response = await ai.models.generateContent({
-      model,
+      model: FLASH_MODEL,
       contents: [{ parts: contents }],
       config: {
+        systemInstruction: buildRecruiterScanSystemInstruction(),
         temperature: 0.0,
         responseMimeType: "application/json",
       }
@@ -215,7 +293,18 @@ export const performRecruiterScan = async (
 
     const jsonString = response.text.trim();
     const cleanedJsonString = jsonString.replace(/^```json\s*|```$/g, '');
-    return JSON.parse(cleanedJsonString);
+    const result: RecruiterScanResult = JSON.parse(cleanedJsonString);
+
+    // Add usage metadata
+    if (response.usageMetadata) {
+      result.usage = {
+        promptTokenCount: response.usageMetadata.promptTokenCount,
+        candidatesTokenCount: response.usageMetadata.candidatesTokenCount,
+        totalTokenCount: response.usageMetadata.totalTokenCount
+      };
+    }
+
+    return result;
   } catch (error) {
     console.error("Recruiter Scan Error:", error);
     throw new Error("Failed to perform recruiter scan.");
@@ -228,7 +317,7 @@ export const analyzeCandidate = async (
   jobDescription: string,
   resume: { text?: string; base64Data?: string; mimeType?: string; }
 ): Promise<CandidateAnalysis> => {
-  const prompt = `
+  const systemInstruction = `
     You are an AI recruitment assistant. Analyze this resume against the provided Job Description.
     
     **CRITICAL INSTRUCTION: ZERO HALLUCINATION POLICY**
@@ -236,9 +325,6 @@ export const analyzeCandidate = async (
     - DO NOT use any external knowledge about the candidate.
     - If a field is not present in the resume, use "NA" or 0 as appropriate.
     - DO NOT invent or "fill in" missing information.
-
-    JOB DESCRIPTION:
-    ${jobDescription}
 
     OUTPUT JSON ONLY:
     {
@@ -254,6 +340,8 @@ export const analyzeCandidate = async (
         "phone": "string (extracted from resume, use 'NA' if not found)",
         "address": "string (extracted from resume, use 'NA' if not found)",
         "jobType": "string (the candidate's current or target job title)",
+        "category": "string (Smartly categorize the candidate into a broad field like 'UX Design', 'Frontend Development', 'Backend Development', 'Data Science', 'Product Management', 'Marketing', 'Sales', etc. based on their overall profile)",
+        "outreach_draft": "string (A personalized, professional outreach message for this specific candidate based on their strengths and the JD)",
         "breakdown": {
             "core_skills": number (0-100),
             "title_alignment": number (0-100),
@@ -267,28 +355,39 @@ export const analyzeCandidate = async (
 
   const contents = [];
   if (resume.text) {
-    contents.push({ text: `RESUME:\n${resume.text}` });
+    contents.push({ text: `JOB DESCRIPTION:\n${jobDescription}\n\nRESUME:\n${resume.text}` });
   } else if (resume.base64Data && resume.mimeType) {
     contents.push({ inlineData: { data: resume.base64Data, mimeType: resume.mimeType } });
+    contents.push({ text: `JOB DESCRIPTION:\n${jobDescription}` });
   }
-  contents.push({ text: prompt });
 
   const response = await ai.models.generateContent({
-    model,
+    model: FLASH_MODEL,
     contents: [{ parts: contents }],
-    config: { temperature: 0.0, responseMimeType: "application/json" }
+    config: { 
+      systemInstruction,
+      temperature: 0.0, 
+      responseMimeType: "application/json" 
+    }
   });
 
-  return JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));
+  const result: CandidateAnalysis = JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));
+  
+  if (response.usageMetadata) {
+    result.usage = {
+      promptTokenCount: response.usageMetadata.promptTokenCount,
+      candidatesTokenCount: response.usageMetadata.candidatesTokenCount,
+      totalTokenCount: response.usageMetadata.totalTokenCount
+    };
+  }
+  
+  return result;
 };
 
 export const analyzeJobDescription = async (jobDescription: string): Promise<JDAnalysis> => {
-  const prompt = `
+  const systemInstruction = `
     Analyze and improve this Job Description.
     
-    JD:
-    ${jobDescription}
-
     Tasks:
     1. Score clarity (0-100).
     2. Score potential bias (0-100, lower is less biased).
@@ -312,16 +411,20 @@ export const analyzeJobDescription = async (jobDescription: string): Promise<JDA
   `;
 
   const response = await ai.models.generateContent({
-    model,
-    contents: [{ parts: [{ text: prompt }] }],
-    config: { temperature: 0.0, responseMimeType: "application/json" }
+    model: FLASH_MODEL,
+    contents: [{ parts: [{ text: `JOB DESCRIPTION:\n${jobDescription}` }] }],
+    config: { 
+      systemInstruction,
+      temperature: 0.0, 
+      responseMimeType: "application/json" 
+    }
   });
 
   return JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));
 };
 
 export const simplifyResume = async (resume: { text?: string; base64Data?: string; mimeType?: string; }): Promise<string> => {
-  const prompt = `
+  const systemInstruction = `
     Take the provided resume and convert it into a "Clean Standardized View" using Markdown.
     - Remove all decorative formatting.
     - Normalize fonts and headers.
@@ -339,12 +442,14 @@ export const simplifyResume = async (resume: { text?: string; base64Data?: strin
   } else if (resume.base64Data && resume.mimeType) {
     contents.push({ inlineData: { data: resume.base64Data, mimeType: resume.mimeType } });
   }
-  contents.push({ text: prompt });
 
   const response = await ai.models.generateContent({
-    model,
+    model: FLASH_MODEL,
     contents: [{ parts: contents }],
-    config: { temperature: 0.0 } // Markdown output
+    config: { 
+      systemInstruction,
+      temperature: 0.0 
+    }
   });
 
   return response.text;
@@ -355,13 +460,9 @@ export const generateInterviewScript = async (
   candidateSummary: string,
   redFlags: string[]
 ): Promise<InterviewScript> => {
-  const prompt = `
+  const systemInstruction = `
     Generate a structured interview script for a candidate based on this JD and their profile summary.
     
-    JD: ${jobDescription.substring(0, 1000)}...
-    Candidate Summary: ${candidateSummary}
-    Identified Risks: ${redFlags.join(', ')}
-
     Generate:
     - 3 Technical Questions (hard skills)
     - 3 Behavioral Questions (soft skills/culture)
@@ -383,9 +484,13 @@ export const generateInterviewScript = async (
   `;
 
   const response = await ai.models.generateContent({
-    model,
-    contents: [{ parts: [{ text: prompt }] }],
-    config: { temperature: 0.2, responseMimeType: "application/json" }
+    model: FLASH_MODEL,
+    contents: [{ parts: [{ text: `JD: ${jobDescription.substring(0, 1000)}...\nCandidate Summary: ${candidateSummary}\nIdentified Risks: ${redFlags.join(', ')}` }] }],
+    config: { 
+      systemInstruction,
+      temperature: 0.2, 
+      responseMimeType: "application/json" 
+    }
   });
 
   return JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));
@@ -395,35 +500,28 @@ export const performCrossDomainAnalysis = async (
   candidateId: string,
   resume: { text?: string; base64Data?: string; mimeType?: string; }
 ): Promise<CrossDomainAnalysis> => {
-  const prompt = `
-SYSTEM: You are an expert career translator and recruiter analyst. Temperature=0.0. NEVER INVENT facts. Use ONLY the resumeText provided. Output JSON per the required schema.
+  const systemInstruction = `
+    You are an expert career translator and recruiter analyst. Temperature=0.0. NEVER INVENT facts. Use ONLY the resumeText provided. Output JSON per the required schema.
 
-USER: Given this resumeText and this list of targetDomains, for each domain evaluate if the candidate’s experience transfers. For each domain produce transferabilityScore 0-100, confidence, top 3-5 transferable skills, exact evidence substrings with start and end characters, 1-2 suggested resume bullet rewrites (reframing existing facts, do not invent numbers), 3 interview questions to validate transferability, a 3-item upskill checklist (practical, cheap, fast), and estimated timeToProductivityWeeks. If the resume does not support transfer to a domain, set transferabilityScore low and confidence low and explain briefly in 'reason' field.
+    Given this resumeText and this list of targetDomains, for each domain evaluate if the candidate’s experience transfers. For each domain produce transferabilityScore 0-100, confidence, top 3-5 transferable skills, exact evidence substrings with start and end characters, 1-2 suggested resume bullet rewrites (reframing existing facts, do not invent numbers), 3 interview questions to validate transferability, a 3-item upskill checklist (practical, cheap, fast), and estimated timeToProductivityWeeks. If the resume does not support transfer to a domain, set transferabilityScore low and confidence low and explain briefly in 'reason' field.
 
-INPUT:
-{
- "candidateId":"${candidateId}",
- "resumeText":"<full extracted text>",
- "targetDomains": ["healthcare->fintech","edtech->SaaS", "government->enterprise","consumer->B2B","startup->corporate","academia->R&D", "retail->commerce","manufacturing->iot","nonprofit->public","agency->product-studio","hospitality->travel-tech","telecom->cloud","logistics->supplychain","media->streaming"]
-}
-
-OUTPUT JSON ONLY. The response must match this schema exactly:
-{
-  "candidateId": "string",
-  "domains": [
+    OUTPUT JSON ONLY. The response must match this schema exactly:
     {
-      "domainName": "string",
-      "transferabilityScore": number,
-      "confidence": "low"|"medium"|"high",
-      "primarySkills": ["string"],
-      "evidence": [{"text":"string","startChar":number,"endChar":number}],
-      "suggestedBullets": ["string"],
-      "interviewQuestions": ["string"],
-      "upskillChecklist": ["string"],
-      "timeToProductivityWeeks": number
+      "candidateId": "string",
+      "domains": [
+        {
+          "domainName": "string",
+          "transferabilityScore": number,
+          "confidence": "low"|"medium"|"high",
+          "primarySkills": ["string"],
+          "evidence": [{"text":"string","startChar":number,"endChar":number}],
+          "suggestedBullets": ["string"],
+          "interviewQuestions": ["string"],
+          "upskillChecklist": ["string"],
+          "timeToProductivityWeeks": number
+        }
+      ]
     }
-  ]
-}
   `;
 
   const contents = [];
@@ -432,12 +530,18 @@ OUTPUT JSON ONLY. The response must match this schema exactly:
   } else if (resume.base64Data && resume.mimeType) {
     contents.push({ inlineData: { data: resume.base64Data, mimeType: resume.mimeType } });
   }
-  contents.push({ text: prompt });
+  
+  const targetDomains = ["healthcare->fintech","edtech->SaaS", "government->enterprise","consumer->B2B","startup->corporate","academia->R&D", "retail->commerce","manufacturing->iot","nonprofit->public","agency->product-studio","hospitality->travel-tech","telecom->cloud","logistics->supplychain","media->streaming"];
+  contents.push({ text: `CANDIDATE_ID: ${candidateId}\nTARGET_DOMAINS: ${targetDomains.join(', ')}` });
 
   const response = await ai.models.generateContent({
-    model,
+    model: PRO_MODEL,
     contents: [{ parts: contents }],
-    config: { temperature: 0.0, responseMimeType: "application/json" }
+    config: { 
+      systemInstruction,
+      temperature: 0.0, 
+      responseMimeType: "application/json" 
+    }
   });
 
   return JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));
@@ -456,7 +560,34 @@ export const predictInterviewQuestions = async (
 ): Promise<InterviewPredictionResponse> => {
   const requestId = Math.random().toString(36).substr(2, 9);
   
-  // Construct a stringified profile to pass to LLM
+  const systemInstruction = `
+    You are an expert interviewer and hiring strategist. Temperature=0.0. Only use the provided text. Do not invent facts. If evidence for a question is missing, mark confidence=low and evidence=[]. Output only JSON.
+
+    Generate predicted interview questions for the inputs below. For each question, produce:
+    id, category (behavioral|technical|scenario|founder|trick), question, difficulty (easy|medium|hard), confidence, answerGuidelines (3 bullets), reason (why this question appears, referencing input text), and sourceTokens (substring with startChar/endChar). Output MUST follow the exact JSON schema below.
+
+    OUTPUT SCHEMA:
+    {
+    "requestId":"string",
+    "metadata":{"generatedAt":"ISO8601","model":"gemini-3.1-pro-preview"},
+    "questions":[{
+        "id":"string",
+        "category":"behavioral"|"technical"|"scenario"|"founder"|"trick",
+        "question":"string",
+        "difficulty":"easy"|"medium"|"hard",
+        "confidence":"high"|"medium"|"low",
+        "answerGuidelines":["string","string","string"],
+        "reason":"string",
+        "sourceTokens":[{"text":"string","startChar":number,"endChar":number}]
+    }],
+    "summary":{
+        "topCategories":["string"],
+        "overallConfidence":"high"|"medium"|"low",
+        "notes":"string"
+    }
+    }
+  `;
+
   const companyContext = inputs.companyProfile 
     ? JSON.stringify(inputs.companyProfile) 
     : inputs.companyString;
@@ -465,51 +596,14 @@ export const predictInterviewQuestions = async (
     ? JSON.stringify(inputs.jobRole)
     : inputs.jobRoleString;
 
-  const prompt = `
-    SYSTEM:
-    "You are an expert interviewer and hiring strategist. Temperature=0.0. Only use the provided text. Do not invent facts. If evidence for a question is missing, mark confidence=low and evidence=[]. Output only JSON."
-
-    USER:
-    "Generate predicted interview questions for the inputs below. For each question, produce:
-    id, category (behavioral|technical|scenario|founder|trick), question, difficulty (easy|medium|hard), confidence, answerGuidelines (3 bullets), reason (why this question appears, referencing input text), and sourceTokens (substring with startChar/endChar). Output MUST follow the exact JSON schema below.
-
-    INPUT:
-    {
-      'requestId': '${requestId}',
-      'companyProfile': '${companyContext.replace(/'/g, "")}',
-      'jobRole': '${roleContext.replace(/'/g, "")}',
-      'jobDescription': '${inputs.jobDescription.replace(/'/g, "").substring(0, 5000)}',
-      'resumeText': '${inputs.resumeText.replace(/'/g, "").substring(0, 5000)}',
-      'numQuestions': ${inputs.numQuestions},
-      'options': { 'includeFounderStyle': true, 'includeTrickQuestions': true }
-    }
-
-    OUTPUT SCHEMA:
-    {
-    'requestId':'string',
-    'metadata':{'generatedAt':'ISO8601','model':'gemini-3-pro-preview'},
-    'questions':[{
-        'id':'string',
-        'category':'behavioral'|'technical'|'scenario'|'founder'|'trick',
-        'question':'string',
-        'difficulty':'easy'|'medium'|'hard',
-        'confidence':'high'|'medium'|'low',
-        'answerGuidelines':['string','string','string'],
-        'reason':'string',
-        'sourceTokens':[{'text':'string','startChar':int,'endChar':int}]
-    }],
-    'summary':{
-        'topCategories':['string'],
-        'overallConfidence':'high'|'medium'|'low',
-        'notes':'string'
-    }
-    }
-  `;
-
   const response = await ai.models.generateContent({
-    model,
-    contents: [{ parts: [{ text: prompt }] }],
-    config: { temperature: 0.0, responseMimeType: "application/json" }
+    model: PRO_MODEL,
+    contents: [{ parts: [{ text: `REQUEST_ID: ${requestId}\nCOMPANY: ${companyContext}\nROLE: ${roleContext}\nJD: ${inputs.jobDescription.substring(0, 5000)}\nRESUME: ${inputs.resumeText.substring(0, 5000)}\nNUM_QUESTIONS: ${inputs.numQuestions}` }] }],
+    config: { 
+      systemInstruction,
+      temperature: 0.0, 
+      responseMimeType: "application/json" 
+    }
   });
 
   return JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));
@@ -519,12 +613,9 @@ export const analyzePracticeAnswer = async (
   question: string,
   answer: string
 ): Promise<PracticeFeedback> => {
-  const prompt = `
+  const systemInstruction = `
     You are an expert interview coach. Analyze the user's answer to the interview question below.
     
-    Question: "${question}"
-    User Answer: "${answer}"
-
     Provide constructive feedback in JSON format:
     1. Score clarity (0-100).
     2. Rate STAR method usage (Strong, Average, Weak).
@@ -543,9 +634,13 @@ export const analyzePracticeAnswer = async (
   `;
 
   const response = await ai.models.generateContent({
-    model,
-    contents: [{ parts: [{ text: prompt }] }],
-    config: { temperature: 0.2, responseMimeType: "application/json" }
+    model: PRO_MODEL,
+    contents: [{ parts: [{ text: `QUESTION: "${question}"\nUSER_ANSWER: "${answer}"` }] }],
+    config: { 
+      systemInstruction,
+      temperature: 0.2, 
+      responseMimeType: "application/json" 
+    }
   });
 
   return JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));
@@ -555,17 +650,19 @@ export const analyzePracticeAnswer = async (
 export const extractTextFromFile = async (
   file: { base64Data: string; mimeType: string; }
 ): Promise<string> => {
-  const prompt = `Extract all text from this document verbatim. Return ONLY the text content. Do not add any markdown or commentary.`;
+  const systemInstruction = `Extract all text from this document verbatim. Return ONLY the text content. Do not add any markdown or commentary.`;
   
   const response = await ai.models.generateContent({
-    model,
+    model: FLASH_MODEL,
     contents: [{
       parts: [
-        { inlineData: { data: file.base64Data, mimeType: file.mimeType } },
-        { text: prompt }
+        { inlineData: { data: file.base64Data, mimeType: file.mimeType } }
       ]
     }],
-    config: { temperature: 0.0 }
+    config: { 
+      systemInstruction,
+      temperature: 0.0 
+    }
   });
   
   return response.text.trim();
@@ -574,9 +671,7 @@ export const extractTextFromFile = async (
 export const interviewChat = async (request: ChatRequest): Promise<InterviewChatResponse> => {
   const { history, userQuestion, context } = request;
 
-  // Strict RAG System Prompt
-  const prompt = `
-    SYSTEM:
+  const systemInstruction = `
     You are a highly intelligent, context-aware Interview Assistant.
     You MUST answer the user's question using **ONLY** the provided Context Information below.
     
@@ -591,7 +686,22 @@ export const interviewChat = async (request: ChatRequest): Promise<InterviewChat
     3. **Research Sources**: Trusted public info (Glassdoor, Company Site).
     4. **General Role Info**: Lowest priority, use only if nothing else matches.
 
-    **CONTEXT INFORMATION:**
+    **INSTRUCTIONS:**
+    - Answer the user's question directly and concisely.
+    - **CITE YOUR SOURCES**: For every claim, you must identify where it came from.
+    - Populate the "usedSources" array in the JSON response with the specific IDs or Titles of sources used.
+    
+    **OUTPUT JSON SCHEMA:**
+    {
+      "answerText": "string (markdown allowed)",
+      "usedSources": [
+        { "id": "string", "title": "JD" | "Resume" | "Company Metadata" | "Glassdoor" | "LinkedIn" | "General Knowledge", "type": "jd" | "resume" | "web" | "metadata" }
+      ],
+      "suggestedFollowUps": ["string", "string", "string"]
+    }
+  `;
+
+  const contextText = `
     [JOB_DESCRIPTION]:
     ${context.jdText ? context.jdText.substring(0, 8000) : "Not provided"}
     
@@ -612,54 +722,101 @@ export const interviewChat = async (request: ChatRequest): Promise<InterviewChat
     
     **USER QUESTION:**
     ${userQuestion}
-
-    **INSTRUCTIONS:**
-    - Answer the user's question directly and concisely.
-    - **CITE YOUR SOURCES**: For every claim, you must identify where it came from.
-    - Populate the "usedSources" array in the JSON response with the specific IDs or Titles of sources used.
-    
-    **OUTPUT JSON SCHEMA:**
-    {
-      "answerText": "string (markdown allowed)",
-      "usedSources": [
-        { "id": "string", "title": "JD" | "Resume" | "Company Metadata" | "Glassdoor" | "LinkedIn" | "General Knowledge", "type": "jd" | "resume" | "web" | "metadata" }
-      ],
-      "suggestedFollowUps": ["string", "string", "string"]
-    }
   `;
 
   const response = await ai.models.generateContent({
-    model,
-    contents: [{ parts: [{ text: prompt }] }],
-    config: { temperature: 0.0, responseMimeType: "application/json" }
+    model: FLASH_MODEL,
+    contents: [{ parts: [{ text: contextText }] }],
+    config: { 
+      systemInstruction,
+      temperature: 0.0, 
+      responseMimeType: "application/json" 
+    }
   });
 
   return JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));
 };
 
 export const generateComparisonSummary = async (candidates: Candidate[], jdText: string): Promise<string> => {
+  const systemInstruction = `
+    You are a senior talent acquisition specialist.
+    Compare the following candidates for the job description provided.
+    Provide a concise, high-level summary (max 150 words) that highlights who is the best fit, who has the most potential, and any critical trade-offs the recruiter should consider.
+  `;
+
   const context = candidates
     .map(c => `[CANDIDATE: ${c.name}]\nScore: ${c.analysis?.match_score}%\nPotential: ${c.analysis?.potential_score}%\nStrengths: ${c.analysis?.strengths?.join(', ')}\nGaps: ${c.analysis?.gaps?.join(', ')}`)
     .join('\n\n');
 
   const prompt = `
-    You are a senior talent acquisition specialist.
-    Compare the following candidates for the job description provided.
-    Provide a concise, high-level summary (max 150 words) that highlights who is the best fit, who has the most potential, and any critical trade-offs the recruiter should consider.
-    
     JOB DESCRIPTION:
     ${jdText}
     
     CANDIDATES:
     ${context}
-    
-    SUMMARY:
   `;
 
   const response = await ai.models.generateContent({
-    model,
+    model: FLASH_MODEL,
     contents: [{ parts: [{ text: prompt }] }],
-    config: { temperature: 0.2 }
+    config: { 
+      systemInstruction,
+      temperature: 0.2 
+    }
+  });
+
+  return response.text.trim();
+};
+
+export const getAdminInsights = async (stats: {
+  totalUsers: number;
+  totalResumes: number;
+  totalInterviews: number;
+  totalTokens: number;
+  avgProcessingTime: number;
+  totalCostUSD: number;
+  avgMatchScore?: number;
+  avgPotentialScore?: number;
+  health?: number;
+}, view: 'overview' | 'jobseekers' | 'recruiters' = 'overview'): Promise<string> => {
+  const systemInstruction = `
+    You are an AI System Architect and Senior Business Analyst. 
+    Analyze the platform metrics for the ${view.toUpperCase()} view and provide 3-4 concise, high-impact "AI Insights".
+    
+    Your insights MUST be:
+    1. **Actionable**: Specific steps to improve metrics.
+    2. **Strategic**: Connect data points to business outcomes.
+    3. **Cost-Optimized**: Advice on reducing LLM costs without sacrificing quality.
+    4. **Intelligent**: Look for correlations (e.g., "High match scores but low interview counts suggest X").
+    
+    Context for ${view.toUpperCase()}:
+    - Overview: Focus on platform health, growth, and overall ROI.
+    - Job Seekers: Focus on resume quality, match scores, and processing efficiency.
+    - Recruiters: Focus on candidate potential, interview engagement, and hiring velocity.
+    
+    Return the response as a Markdown list.
+  `;
+
+  const prompt = `
+    METRICS:
+    - Total Users: ${stats.totalUsers}
+    - Total Resumes: ${stats.totalResumes}
+    - Total Interviews: ${stats.totalInterviews}
+    - Total Tokens: ${stats.totalTokens}
+    - Avg Processing Time: ${stats.avgProcessingTime}s
+    - Total Cost: $${stats.totalCostUSD.toFixed(2)}
+    ${stats.avgMatchScore ? `- Avg Match Score: ${stats.avgMatchScore.toFixed(1)}%` : ''}
+    ${stats.avgPotentialScore ? `- Avg Potential Score: ${stats.avgPotentialScore.toFixed(1)}%` : ''}
+    ${stats.health ? `- Platform Health: ${stats.health.toFixed(1)}%` : ''}
+  `;
+
+  const response = await ai.models.generateContent({
+    model: FLASH_MODEL,
+    contents: [{ parts: [{ text: prompt }] }],
+    config: { 
+      systemInstruction,
+      temperature: 0.2 
+    }
   });
 
   return response.text.trim();

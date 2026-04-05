@@ -27,7 +27,7 @@ export const useInterviewData = (user: any) => {
    const historyQuery = query(
      collection(db, `users/${uid}/interviews`),
      orderBy('createdAt', 'desc'),
-     limit(10)
+     limit(20)
    );
 
    const unsubscribe = onSnapshot(historyQuery, (snapshot) => {
