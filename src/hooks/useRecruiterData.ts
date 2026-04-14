@@ -12,12 +12,13 @@ import {
  writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Candidate, JDAnalysis } from '../../types';
+import { Candidate, JDAnalysis, Project } from '../../types';
 
 export const useRecruiterData = (user: any) => {
  const [candidates, setCandidates] = useState<Candidate[]>([]);
  const [history, setHistory] = useState<Candidate[]>([]);
  const [currentJD, setCurrentJD] = useState<{jd: string, analysis: JDAnalysis} | null>(null);
+ const [projects, setProjects] = useState<Project[]>([]);
  const [loading, setLoading] = useState(true);
 
  useEffect(() => {
@@ -67,9 +68,24 @@ export const useRecruiterData = (user: any) => {
      setLoading(false);
    });
 
+   // Listen to projects
+   const projectsQuery = query(
+     collection(db, `users/${uid}/projects`),
+     orderBy('updatedAt', 'desc')
+   );
+
+   const unsubscribeProjects = onSnapshot(projectsQuery, (snapshot) => {
+     const fetchedProjects = snapshot.docs.map(doc => ({
+       ...doc.data(),
+       id: doc.id
+     })) as Project[];
+     setProjects(fetchedProjects);
+   });
+
    return () => {
      unsubscribeCandidates();
      jdUnsubscribe();
+     unsubscribeProjects();
    };
  }, [user]);
 
@@ -98,6 +114,21 @@ export const useRecruiterData = (user: any) => {
    });
  };
 
+ const saveProject = async (project: Omit<Project, 'id'>) => {
+   if (!user) return;
+   const id = Date.now().toString();
+   await setDoc(doc(db, `users/${user.uid}/projects/${id}`), {
+     ...project,
+     id,
+     updatedAt: new Date().toISOString()
+   });
+ };
+
+ const deleteProject = async (id: string) => {
+   if (!user) return;
+   await deleteDoc(doc(db, `users/${user.uid}/projects/${id}`));
+ };
+
  const archiveAllCandidates = async () => {
    if (!user) return;
    const uid = user.uid;
@@ -124,10 +155,13 @@ export const useRecruiterData = (user: any) => {
    candidates,
    history,
    currentJD,
+   projects,
    loading,
    saveCandidate,
    deleteCandidate,
    saveJDAnalysis,
+   saveProject,
+   deleteProject,
    archiveAllCandidates,
    clearAllData
  };

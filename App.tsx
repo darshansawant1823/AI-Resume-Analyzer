@@ -19,12 +19,8 @@ import { LegalPages } from './components/LegalPages';
 import { InterviewQuestionPredictor } from './components/InterviewQuestionPredictor';
 
 import { useRecruiterData } from './src/hooks/useRecruiterData';
-import { RefreshCw, FileText, Trash2 as TrashIcon, Eye, X } from 'lucide-react';
+import { RefreshCw, FileText, Trash2 as TrashIcon, Eye } from 'lucide-react';
 import type { ResumeEntry } from './types';
-
-import { Button } from './src/components/ui/button';
-import { Input } from './src/components/ui/input';
-import { Card, CardContent } from './src/components/ui/card';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -82,12 +78,6 @@ const App: React.FC = () => {
   }, []);
 
   const handlePortalChange = (portal: 'seeker' | 'recruiter' | 'admin' | 'profile') => {
-    if (portal === 'recruiter' && !user) {
-      setAuthRole('recruiter');
-      setAuthMode('login');
-      setIsAuthPageActive(true);
-      return;
-    }
     if (portal === 'admin' && profile?.role !== 'admin') {
       return;
     }
@@ -96,12 +86,6 @@ const App: React.FC = () => {
   };
 
   const handleToolChange = (tool: 'analyzer' | 'interview') => {
-    if (tool === 'interview' && !user) {
-      setAuthRole('jobseeker');
-      setAuthMode('login');
-      setIsAuthPageActive(true);
-      return;
-    }
     setSeekerTool(tool);
   };
 
@@ -341,9 +325,8 @@ const App: React.FC = () => {
                           
                           {/* Seeker Tool Tabs */}
                           <div className="flex justify-center w-full">
-                            <div className="bg-muted/50 p-1 rounded-xl flex sm:inline-flex backdrop-blur-md w-full sm:w-auto">
-                                 <Button 
-                                    variant={seekerTool === 'analyzer' ? 'default' : 'ghost'}
+                            <div className="bg-gray-200/50 p-1 rounded-xl flex sm:inline-flex backdrop-blur-md w-full sm:w-auto">
+                                 <button 
                                     onClick={() => handleToolChange('analyzer')}
                                     className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
                                         seekerTool === 'analyzer' 
@@ -352,9 +335,8 @@ const App: React.FC = () => {
                                     }`}
                                  >
                                     Resume Analyzer
-                                 </Button>
-                                 <Button 
-                                    variant={seekerTool === 'interview' ? 'default' : 'ghost'}
+                                 </button>
+                                 <button 
                                     onClick={() => handleToolChange('interview')}
                                     className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
                                         seekerTool === 'interview' 
@@ -363,14 +345,14 @@ const App: React.FC = () => {
                                     }`}
                                  >
                                     AI Interview Prep
-                                 </Button>
+                                 </button>
                             </div>
                           </div>
 
                           {seekerTool === 'analyzer' ? (
                             <>
-                              <Card className="rounded-3xl p-1 shadow-apple-card border border-white/60">
-                                <CardContent className="p-4 sm:p-8 space-y-6 sm:space-y-8">
+                              <div className="bg-white rounded-3xl p-1 shadow-apple-card border border-white/60">
+                                <div className="p-4 sm:p-8 space-y-6 sm:space-y-8">
                                   <JobDescriptionInput value={jobDescription} onChange={setJobDescription} />
                                   <div className="h-px bg-gray-100 w-full"></div>
                                   {profile?.resumes?.map((resume) => (
@@ -400,9 +382,7 @@ const App: React.FC = () => {
                                         </div>
                                       </div>
                                       <div className="flex items-center gap-1">
-                                        <Button 
-                                          variant="ghost"
-                                          size="icon"
+                                        <button 
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setViewingResume(resume);
@@ -411,10 +391,8 @@ const App: React.FC = () => {
                                           title="View Resume"
                                         >
                                           <Eye className="w-4 h-4" />
-                                        </Button>
-                                        <Button 
-                                          variant="ghost"
-                                          size="icon"
+                                        </button>
+                                        <button 
                                           onClick={async (e) => {
                                             e.stopPropagation();
                                             if (user) {
@@ -428,7 +406,7 @@ const App: React.FC = () => {
                                           title="Delete Resume"
                                         >
                                           <TrashIcon className="w-4 h-4" />
-                                        </Button>
+                                        </button>
                                       </div>
                                     </div>
                                   ))}
@@ -438,8 +416,7 @@ const App: React.FC = () => {
 )}
 
 <div className="text-center py-4">
-  <Button 
-    variant="link"
+  <button 
     onClick={() => {
       setResumeFile(null);
       setSelectedResumeId(null);
@@ -447,20 +424,20 @@ const App: React.FC = () => {
     className="text-xs text-system-blue font-bold hover:underline underline-offset-4"
   >
     Upload a new resume
-  </Button>
+  </button>
 </div>
-</CardContent>
-</Card>
+</div>
+</div>
 
 <div className="flex justify-center pt-2 sm:pt-4">
-<Button
+<button
 onClick={handleAnalyze}
 disabled={isButtonDisabled}
 className="group relative flex items-center justify-center gap-2 w-full sm:w-auto px-8 py-4 bg-system-blue text-white text-lg font-semibold rounded-full shadow-apple-button hover:bg-system-blue-hover hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-none min-w-[240px]"
 >
 <SparklesIcon className="w-5 h-5 transition-transform group-hover:rotate-12" />
 <span>{isLoading ? 'Analyzing...' : 'Analyze Resume'}</span>
-</Button>
+</button>
 </div>
 </>
 ) : (
@@ -509,14 +486,12 @@ className="group relative flex items-center justify-center gap-2 w-full sm:w-aut
       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Uploaded on {new Date(viewingResume.uploadedAt).toLocaleDateString()}</p>
     </div>
   </div>
-  <Button 
-    variant="ghost"
-    size="icon"
+  <button 
     onClick={() => setViewingResume(null)}
     className="p-2 hover:bg-gray-100 rounded-full transition-colors"
   >
-    <X className="w-5 h-5 text-gray-400" />
-  </Button>
+    <RefreshCw className="w-5 h-5 text-gray-400 rotate-45" />
+  </button>
 </div>
 <div className="flex-1 overflow-y-auto p-8 bg-white">
   <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700 leading-relaxed">
@@ -524,12 +499,12 @@ className="group relative flex items-center justify-center gap-2 w-full sm:w-aut
   </pre>
 </div>
 <div className="p-6 border-t border-gray-100 flex justify-end bg-gray-50/50">
-  <Button 
+  <button 
     onClick={() => setViewingResume(null)}
     className="px-8 py-2.5 bg-system-blue text-white font-bold rounded-xl hover:bg-system-blue-hover transition-all"
   >
     Close Preview
-  </Button>
+  </button>
 </div>
 </div>
 </div>
@@ -541,27 +516,24 @@ className="group relative flex items-center justify-center gap-2 w-full sm:w-aut
                     Secure Processing • Encrypted in Transit • Private
                 </p>
                 <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
-                  <Button 
-                      variant="link"
+                  <button 
                       onClick={() => setLegalPage('terms')}
-                      className="text-xs text-gray-500 hover:text-system-blue transition-colors hover:underline underline-offset-2 h-auto p-0"
+                      className="text-xs text-gray-500 hover:text-system-blue transition-colors hover:underline underline-offset-2"
                   >
                       Terms & Conditions
-                  </Button>
-                  <Button 
-                      variant="link"
+                  </button>
+                  <button 
                       onClick={() => setLegalPage('privacy')}
-                      className="text-xs text-gray-500 hover:text-system-blue transition-colors hover:underline underline-offset-2 h-auto p-0"
+                      className="text-xs text-gray-500 hover:text-system-blue transition-colors hover:underline underline-offset-2"
                   >
                       Privacy Policy
-                  </Button>
-                  <Button 
-                      variant="link"
+                  </button>
+                  <button 
                       onClick={() => setLegalPage('refund')}
-                      className="text-xs text-gray-500 hover:text-system-blue transition-colors hover:underline underline-offset-2 h-auto p-0"
+                      className="text-xs text-gray-500 hover:text-system-blue transition-colors hover:underline underline-offset-2"
                   >
                       Refund Policy
-                  </Button>
+                  </button>
                 </div>
             </div>
 
@@ -584,7 +556,7 @@ className="group relative flex items-center justify-center gap-2 w-full sm:w-aut
                     {missingContactInfo.email && (
                       <div>
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 pl-1">Email Address</label>
-                        <Input 
+                        <input 
                           type="email" 
                           value={contactForm.email}
                           onChange={(e) => setContactForm(prev => ({ ...prev, email: e.target.value }))}
@@ -596,7 +568,7 @@ className="group relative flex items-center justify-center gap-2 w-full sm:w-aut
                     {missingContactInfo.phone && (
                       <div>
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 pl-1">Phone Number</label>
-                        <Input 
+                        <input 
                           type="tel" 
                           value={contactForm.phone}
                           onChange={(e) => setContactForm(prev => ({ ...prev, phone: e.target.value }))}
@@ -608,19 +580,18 @@ className="group relative flex items-center justify-center gap-2 w-full sm:w-aut
                   </div>
                   
                   <div className="flex gap-3">
-                    <Button 
-                      variant="secondary"
+                    <button 
                       onClick={() => setShowContactModal(false)}
                       className="flex-1 px-6 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition-all"
                     >
                       Skip
-                    </Button>
-                    <Button 
+                    </button>
+                    <button 
                       onClick={handleFixContactInfo}
                       className="flex-1 px-6 py-3 bg-system-blue text-white font-bold rounded-xl hover:bg-system-blue-hover transition-all shadow-lg shadow-system-blue/20"
                     >
                       Update Resume
-                    </Button>
+                    </button>
                   </div>
                 </div>
               </div>

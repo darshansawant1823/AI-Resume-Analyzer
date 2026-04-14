@@ -143,6 +143,9 @@ export interface CandidateAnalysis {
   // New fields for Comparison
   breakdown: Breakdown;
   gaps: string[];
+  confidence_score: number;
+  evidence: { [strength: string]: string }; // Maps strength to a source quote from resume
+  extracted_text?: string; // Verbatim text extracted from the resume
   usage?: UsageMetadata;
 }
 
@@ -151,6 +154,8 @@ export interface Candidate {
   name: string; // Extracted from filename or analysis
   file: File | null;
   status: 'pending' | 'processing' | 'analyzed' | 'error';
+  flashScan?: string;
+  isVerified?: boolean;
   analysis?: CandidateAnalysis;
   crossDomainAnalysis?: CrossDomainAnalysis; // Cache for 24h
   extractedText?: string; // verbatim text for grounding
@@ -281,4 +286,14 @@ export interface InterviewChatResponse {
   answerText: string;
   usedSources: ChatSource[]; // The AI should return which sources it actually referenced
   suggestedFollowUps: string[];
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  jd: string;
+  jdAnalysis: JDAnalysis | null;
+  candidateIds: string[];
+  createdAt: string;
+  updatedAt: string;
 }

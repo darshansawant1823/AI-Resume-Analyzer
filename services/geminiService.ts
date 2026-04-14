@@ -17,13 +17,18 @@ import type {
   InterviewChatResponse
 } from '../types';
 
-const API_KEY = process.env.API_KEY;
+let aiInstance: GoogleGenAI | null = null;
 
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set.");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+const getAI = () => {
+  if (!aiInstance) {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY environment variable not set.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+};
 
 // Using gemini-3.1-pro-preview for advanced reasoning and complex tasks
 const PRO_MODEL = 'gemini-3.1-pro-preview';
@@ -34,54 +39,63 @@ const buildSystemInstruction = (): string => {
   return `
     You are an expert product/UX engineer and a world-class resume/job-matching AI assistant. Your task is to analyze a provided resume against a job description and produce a detailed analysis in a specific JSON format.
 
-    **CRITICAL INSTRUCTION: ZERO HALLUCINATION POLICY**
+    **CRITICAL INSTRUCTION: ZERO HALLUCINATION & ABSOLUTE ACCURACY**
     1.  **STRICT ADHERENCE**: Use ONLY the facts (companies, dates, roles, skills, education) explicitly present in the provided resume.
     2.  **FORBIDDEN**: Do NOT invent or "fill in" missing information to make the candidate look better for the JD.
         - **NEVER** add a skill the candidate hasn't listed.
         - **NEVER** add a project the candidate hasn't described.
         - **NEVER** upgrade a job title (e.g., "Developer" to "Lead Developer") if the source doesn't support it.
         - **NEVER** change employment dates or add "missing" years.
-    3.  **STYLING ONLY**: Your "optimization" should be limited to rephrasing existing bullet points for better impact, clarity, and ATS keyword prominence *of existing concepts only*. If the user is a bad fit, acknowledge it honestly.
-    4.  **VERIFICATION**: In your internal monologue, cross-reference every claim in your output against the source resume. If it's not there, delete it.
-    5.  **BREAKDOWN ACCURACY**: Every score in the 'breakdown' must be strictly justified by the 'details' provided for that category. If a candidate is missing 50% of the required core skills, the 'core_skills' score MUST be 50 or lower. Do NOT default to high scores.
+    3.  **STRICT ENHANCEMENT**: Your "optimization" of the resume and cover letter MUST be limited to rephrasing existing bullet points for better impact, clarity, and ATS keyword prominence *of existing concepts only*. 
+        - **NEVER** add any skills, tools, or experiences that are not explicitly mentioned in the source resume.
+        - **NEVER** add anything which is not in the resume already.
+        - You may enhance the wording to align with the JD, but the underlying fact MUST be in the resume.
+        - If the candidate is a bad fit, acknowledge it honestly.
+    4.  **SUGGESTION TAGGING**: In the "custom_resume_text", wrap any significantly rewritten or optimized phrases in <suggestion>...</suggestion> tags. This allows the UI to highlight changes.
+    **ZERO HALLUCINATION POLICY**: You are a strictly objective analyzer. You MUST NOT invent, assume, or hallucinate any skills, experiences, or qualifications that are not explicitly stated in the resume. If a candidate is missing a requirement, state it clearly. Accuracy is your highest priority.
+    
+    5.  **VERIFICATION**: In your internal monologue, cross-reference every claim in your output against the source resume. If it's not there, delete it.
+
+    **SCORING LOGIC (GRANULAR & REALISTIC):**
+    - **BE EXTREMELY CRITICAL**: 100% in a category is reserved for candidates who exceed the JD requirements significantly.
+    - **Differentiate**: Avoid generic or identical scores for different candidates unless they are truly identical in every metric. Be precise to the single digit (e.g., 77% vs 78%).
+    - **Granularity**: Use the full range of the score (e.g., 22/30 instead of always rounding to 30).
+    - **Weights**:
+        - Core skills match (30%)
+        - Role/title alignment (20%)
+        - Experience relevance (15%)
+        - Achievement/results (10%)
+        - Education & certifications (5%)
+        - ATS/format readiness & keyword density (10%)
+        - Soft skill & culture fit signals (5%)
+        - Red flags (negative -5 to -15)
 
     **CONDITIONAL OPTIMIZATION RULE:**
-    - If the candidate's core profile is fundamentally mismatched with the Job Description (e.g., "Not Eligible" verdict, match_score < 60):
+    - If the candidate's core profile is fundamentally mismatched with the Job Description (e.g., "Not Eligible" verdict, match_score < 40):
         - Set "custom_resume_text" to "" (empty string).
         - Set "cover_letter" to "" (empty string).
         - Set "cover_line" to null.
         - In "explanations", explicitly state that the profile is not a sufficient match for a professional optimization and that you refuse to fabricate experience.
 
-    **SCORING LOGIC (weights):**
-    - Core skills match (30%)
-    - Role/title alignment (20%)
-    - Experience relevance (15%)
-    - Achievement/results (10%)
-    - Education & certifications (5%)
-    - ATS/format readiness & keyword density (10%)
-    - Soft skill & culture fit signals (5%)
-    - Red flags (negative -5 to -15)
-
-    **IMPORTANT**: Each category in the 'breakdown' should be scored from 0 to 100. The 'match_score' is the weighted average of these scores (minus red flags).
-
     **THRESHOLDS:**
     - 80–100 => "Eligible"
-    - 60–79 => "Borderline"
-    - 0–59 => "Not Eligible"
+    - 40–79 => "Borderline"
+    - 0–39 => "Not Eligible"
 
     **OUTPUT JSON SCHEMA:**
     {
-      "match_score": number (0-100),
+      "match_score": number,
       "verdict": "Eligible"|"Borderline"|"Not Eligible",
       "breakdown": {
-        "core_skills": {"score": number (0-100), "details": [string]},
-        "title_alignment": {"score": number (0-100), "details": [string]},
-        "experience_relevance": {"score": number (0-100), "details": [string]},
-        "achievements": {"score": number (0-100), "details":[string]},
-        "education_certifications": {"score": number (0-100), "details":[string]},
-        "ats_readiness": {"score": number (0-100), "details":[string]},
-        "soft_skills": {"score": number (0-100), "details":[string]},
-        "red_flags": {"score": number (negative value, e.g. -10), "details":[string]}
+        "core_skills": {"score": number (0-30), "details": [string]},
+        "title_alignment": {"score": number (0-20), "details": [string]},
+        "experience_relevance": {"score": number (0-15), "details": [string]},
+        "achievements": {"score": number (0-10), "details":[string]},
+        "education_certifications": {"score": number (0-5), "details":[string]},
+        "ats_readiness": {"score": number (0-10), "details":[string]},
+        "soft_skills": {"score": number (0-5), "details":[string]},
+        "red_flags": {"score": number (0 to -15), "details":[string]},
+        "growth_potential": {"score": number (0-10), "details":[string]}
       },
       "missing_items_prioritized": [
         {"type":"skill"|"certification"|"experience"|"keyword"|"format", "importance": "high"|"medium"|"low", "suggestion": "string"}
@@ -189,6 +203,7 @@ export const analyzeResume = async (
   }
 
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: PRO_MODEL,
       contents: [{ parts: contents }],
@@ -281,6 +296,7 @@ export const performRecruiterScan = async (
   }
 
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: FLASH_MODEL,
       contents: [{ parts: contents }],
@@ -313,6 +329,39 @@ export const performRecruiterScan = async (
 
 // --- RECRUITER PORTAL SERVICES ---
 
+export const performFlashScan = async (
+  jobDescription: string,
+  resume: { text?: string; base64Data?: string; mimeType?: string; }
+): Promise<string> => {
+  const systemInstruction = `
+    You are an expert recruiter. Quickly scan the provided resume against the job description.
+    Provide a single, intelligent, and subtle "First Impression" sentence (max 15 words).
+    Focus on the most prominent match or gap.
+    
+    **CRITICAL**: Output ONLY the sentence. No quotes, no preamble.
+  `;
+
+  const contents = [];
+  if (resume.text) {
+    contents.push({ text: `JOB DESCRIPTION:\n${jobDescription}\n\nRESUME:\n${resume.text}` });
+  } else if (resume.base64Data && resume.mimeType) {
+    contents.push({ inlineData: { data: resume.base64Data, mimeType: resume.mimeType } });
+    contents.push({ text: `JOB DESCRIPTION:\n${jobDescription}` });
+  }
+
+  const ai = getAI();
+  const response = await ai.models.generateContent({
+    model: FLASH_MODEL,
+    contents: [{ parts: contents }],
+    config: { 
+      systemInstruction,
+      temperature: 0.5, 
+    }
+  });
+
+  return response.text.trim();
+};
+
 export const analyzeCandidate = async (
   jobDescription: string,
   resume: { text?: string; base64Data?: string; mimeType?: string; }
@@ -320,19 +369,24 @@ export const analyzeCandidate = async (
   const systemInstruction = `
     You are an AI recruitment assistant. Analyze this resume against the provided Job Description.
     
-    **CRITICAL INSTRUCTION: ZERO HALLUCINATION POLICY**
+    **CRITICAL INSTRUCTION: ZERO HALLUCINATION & REALISTIC SCORING**
     - Use ONLY the information found in the provided resume.
     - DO NOT use any external knowledge about the candidate.
     - If a field is not present in the resume, use "NA" or 0 as appropriate.
     - DO NOT invent or "fill in" missing information.
+    - **BE EXTREMELY CRITICAL AND REALISTIC WITH SCORES.** 100% is almost impossible and should only be given if the resume perfectly matches every single requirement with extensive evidence.
+    - Differentiate scores based on the actual depth of evidence in the resume. A candidate with "some experience" should not get the same score as one with "extensive, proven experience".
+    - Ensure the 'match_score' is a weighted average of the breakdown scores.
+    - All information in 'summary' and 'explanations' must be strictly derived from the resume content, using the JD only as a comparison benchmark.
 
     OUTPUT JSON ONLY:
     {
-        "match_score": number (0-100),
+        "match_score": number (0-100, be realistic),
         "potential_score": number (0-100) - based on transferrable skills and growth trajectory,
         "red_flags": ["string"],
         "strengths": ["string"],
-        "summary": "string (max 50 words)",
+        "summary": "string (max 50 words, strictly factual)",
+        "explanations": ["string (3-5 concise bullet points explaining the match score based ONLY on resume evidence)"],
         "training_estimate": "string (e.g. 'None', '2 weeks for X tool', 'Significant upskilling required')",
         "years_experience": number,
         "seniority_level": "Junior" | "Mid" | "Senior" | "Principal" | "Executive",
@@ -343,13 +397,22 @@ export const analyzeCandidate = async (
         "category": "string (Smartly categorize the candidate into a broad field like 'UX Design', 'Frontend Development', 'Backend Development', 'Data Science', 'Product Management', 'Marketing', 'Sales', etc. based on their overall profile)",
         "outreach_draft": "string (A personalized, professional outreach message for this specific candidate based on their strengths and the JD)",
         "breakdown": {
-            "core_skills": number (0-100),
-            "title_alignment": number (0-100),
-            "experience_relevance": number (0-100),
-            "ats_readiness": number (0-100),
-            "soft_skills": number (0-100)
+            "core_skills": { "score": number (0-30), "details": ["string (concise bullet points)"] },
+            "title_alignment": { "score": number (0-20), "details": ["string (concise bullet points)"] },
+            "experience_relevance": { "score": number (0-15), "details": ["string (concise bullet points)"] },
+            "achievements": { "score": number (0-10), "details": ["string (concise bullet points)"] },
+            "education_certifications": { "score": number (0-5), "details": ["string (concise bullet points)"] },
+            "ats_readiness": { "score": number (0-10), "details": ["string (concise bullet points)"] },
+            "soft_skills": { "score": number (0-5), "details": ["string (concise bullet points)"] },
+            "red_flags": { "score": number (0 to -20), "details": ["string (concise bullet points)"] },
+            "growth_potential": { "score": number (0-10), "details": ["string (concise bullet points)"] }
         },
-        "gaps": ["string (3-5 items of missing skills or experience)"]
+        "gaps": ["string (3-5 items of missing skills or experience)"],
+        "confidence_score": number (0-100, how confident you are in this analysis based on resume clarity),
+        "evidence": {
+            "strength_name": "exact quote from resume that supports this strength"
+        },
+        "extracted_text": "string (The full verbatim text extracted from the resume document)"
     }
   `;
 
@@ -361,11 +424,13 @@ export const analyzeCandidate = async (
     contents.push({ text: `JOB DESCRIPTION:\n${jobDescription}` });
   }
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: FLASH_MODEL,
     contents: [{ parts: contents }],
     config: { 
       systemInstruction,
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       temperature: 0.0, 
       responseMimeType: "application/json" 
     }
@@ -410,6 +475,7 @@ export const analyzeJobDescription = async (jobDescription: string): Promise<JDA
     }
   `;
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: FLASH_MODEL,
     contents: [{ parts: [{ text: `JOB DESCRIPTION:\n${jobDescription}` }] }],
@@ -443,6 +509,7 @@ export const simplifyResume = async (resume: { text?: string; base64Data?: strin
     contents.push({ inlineData: { data: resume.base64Data, mimeType: resume.mimeType } });
   }
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: FLASH_MODEL,
     contents: [{ parts: contents }],
@@ -483,6 +550,7 @@ export const generateInterviewScript = async (
     }
   `;
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: FLASH_MODEL,
     contents: [{ parts: [{ text: `JD: ${jobDescription.substring(0, 1000)}...\nCandidate Summary: ${candidateSummary}\nIdentified Risks: ${redFlags.join(', ')}` }] }],
@@ -534,6 +602,7 @@ export const performCrossDomainAnalysis = async (
   const targetDomains = ["healthcare->fintech","edtech->SaaS", "government->enterprise","consumer->B2B","startup->corporate","academia->R&D", "retail->commerce","manufacturing->iot","nonprofit->public","agency->product-studio","hospitality->travel-tech","telecom->cloud","logistics->supplychain","media->streaming"];
   contents.push({ text: `CANDIDATE_ID: ${candidateId}\nTARGET_DOMAINS: ${targetDomains.join(', ')}` });
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: PRO_MODEL,
     contents: [{ parts: contents }],
@@ -596,6 +665,7 @@ export const predictInterviewQuestions = async (
     ? JSON.stringify(inputs.jobRole)
     : inputs.jobRoleString;
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: PRO_MODEL,
     contents: [{ parts: [{ text: `REQUEST_ID: ${requestId}\nCOMPANY: ${companyContext}\nROLE: ${roleContext}\nJD: ${inputs.jobDescription.substring(0, 5000)}\nRESUME: ${inputs.resumeText.substring(0, 5000)}\nNUM_QUESTIONS: ${inputs.numQuestions}` }] }],
@@ -633,6 +703,7 @@ export const analyzePracticeAnswer = async (
     }
   `;
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: PRO_MODEL,
     contents: [{ parts: [{ text: `QUESTION: "${question}"\nUSER_ANSWER: "${answer}"` }] }],
@@ -652,6 +723,7 @@ export const extractTextFromFile = async (
 ): Promise<string> => {
   const systemInstruction = `Extract all text from this document verbatim. Return ONLY the text content. Do not add any markdown or commentary.`;
   
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: FLASH_MODEL,
     contents: [{
@@ -724,6 +796,7 @@ export const interviewChat = async (request: ChatRequest): Promise<InterviewChat
     ${userQuestion}
   `;
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: FLASH_MODEL,
     contents: [{ parts: [{ text: contextText }] }],
@@ -742,10 +815,12 @@ export const generateComparisonSummary = async (candidates: Candidate[], jdText:
     You are a senior talent acquisition specialist.
     Compare the following candidates for the job description provided.
     Provide a concise, high-level summary (max 150 words) that highlights who is the best fit, who has the most potential, and any critical trade-offs the recruiter should consider.
+    
+    **ZERO HALLUCINATION POLICY**: Base your comparison ONLY on the provided candidate data. Do not invent details or assume qualifications not listed in their scores or strengths.
   `;
 
   const context = candidates
-    .map(c => `[CANDIDATE: ${c.name}]\nScore: ${c.analysis?.match_score}%\nPotential: ${c.analysis?.potential_score}%\nStrengths: ${c.analysis?.strengths?.join(', ')}\nGaps: ${c.analysis?.gaps?.join(', ')}`)
+    .map(c => `[CANDIDATE: ${c.name}]\nScore: ${c.analysis?.match_score || 0}%\nPotential: ${c.analysis?.potential_score || 0}%\nStrengths: ${c.analysis?.strengths?.join(', ') || 'N/A'}\nGaps: ${c.analysis?.gaps?.join(', ') || 'N/A'}`)
     .join('\n\n');
 
   const prompt = `
@@ -756,11 +831,13 @@ export const generateComparisonSummary = async (candidates: Candidate[], jdText:
     ${context}
   `;
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: FLASH_MODEL,
     contents: [{ parts: [{ text: prompt }] }],
     config: { 
       systemInstruction,
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       temperature: 0.2 
     }
   });
@@ -775,47 +852,38 @@ export const getAdminInsights = async (stats: {
   totalTokens: number;
   avgProcessingTime: number;
   totalCostUSD: number;
-  avgMatchScore?: number;
-  avgPotentialScore?: number;
-  health?: number;
 }, view: 'overview' | 'jobseekers' | 'recruiters' = 'overview'): Promise<string> => {
   const systemInstruction = `
-    You are an AI System Architect and Senior Business Analyst. 
-    Analyze the platform metrics for the ${view.toUpperCase()} view and provide 3-4 concise, high-impact "AI Insights".
+    You are an AI System Architect and Business Analyst. 
+    Analyze the following platform usage metrics for the dashboard and provide 3-4 concise, high-impact "AI Insights" on how to improve performance, reduce costs, or increase user engagement.
     
-    Your insights MUST be:
-    1. **Actionable**: Specific steps to improve metrics.
-    2. **Strategic**: Connect data points to business outcomes.
-    3. **Cost-Optimized**: Advice on reducing LLM costs without sacrificing quality.
-    4. **Intelligent**: Look for correlations (e.g., "High match scores but low interview counts suggest X").
-    
-    Context for ${view.toUpperCase()}:
-    - Overview: Focus on platform health, growth, and overall ROI.
-    - Job Seekers: Focus on resume quality, match scores, and processing efficiency.
-    - Recruiters: Focus on candidate potential, interview engagement, and hiring velocity.
+    Your insights should be:
+    1. Actionable (e.g., "Switch to Flash for X to save 30%").
+    2. Performance-oriented (e.g., "Cache Y to reduce latency by Z").
+    3. Strategic (e.g., "High resume-to-interview ratio suggests Z").
+    4. **Cost-Saving Focus**: Provide specific advice on how to save costs without compromising on output quality, processing time, or user experience (UX).
     
     Return the response as a Markdown list.
   `;
 
   const prompt = `
+    VIEW: ${view.toUpperCase()}
     METRICS:
     - Total Users: ${stats.totalUsers}
-    - Total Resumes: ${stats.totalResumes}
-    - Total Interviews: ${stats.totalInterviews}
-    - Total Tokens: ${stats.totalTokens}
+    - Total Resumes Analyzed: ${stats.totalResumes}
+    - Total Interviews Conducted: ${stats.totalInterviews}
+    - Total Tokens Consumed: ${stats.totalTokens}
     - Avg Processing Time: ${stats.avgProcessingTime}s
-    - Total Cost: $${stats.totalCostUSD.toFixed(2)}
-    ${stats.avgMatchScore ? `- Avg Match Score: ${stats.avgMatchScore.toFixed(1)}%` : ''}
-    ${stats.avgPotentialScore ? `- Avg Potential Score: ${stats.avgPotentialScore.toFixed(1)}%` : ''}
-    ${stats.health ? `- Platform Health: ${stats.health.toFixed(1)}%` : ''}
+    - Total Estimated Cost: $${stats.totalCostUSD.toFixed(2)}
   `;
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: FLASH_MODEL,
     contents: [{ parts: [{ text: prompt }] }],
     config: { 
       systemInstruction,
-      temperature: 0.2 
+      temperature: 0.7 
     }
   });
 
