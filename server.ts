@@ -124,6 +124,68 @@ async function startServer() {
     }
   });
 
+  // Job Search Proxy Route
+  app.get("/api/jobs", async (req, res) => {
+    const { query, location } = req.query;
+    const apiKey = process.env.RAPIDAPI_KEY;
+
+    if (!apiKey) {
+      return res.status(500).json({ error: "RAPIDAPI_KEY is not configured on the server." });
+    }
+
+    if (!query) {
+      return res.status(400).json({ error: "Query parameter is required" });
+    }
+
+    try {
+      // If there are multiple locations, JSearch works better if we join them with OR in the query
+      // or simply include them naturally.
+      const formattedLocation = Array.isArray(location) 
+        ? location.join(' OR ') 
+        : (location as string || '').split(',').map(s => s.trim()).filter(Boolean).join(' OR ');
+
+      const searchQuery = formattedLocation 
+        ? `${query} in ${formattedLocation}` 
+        : (query as string);
+
+      // We explicitly log the query to help debug if volume is low (visible in server logs)
+      console.log(`JSearch Query: "${searchQuery}"`);
+
+      const url = `https://jsearch.p.rapidapi.com/search?query=${encodeURIComponent(searchQuery)}&page=1&num_pages=3`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': apiKey,
+          'x-rapidapi-host': 'jsearch.p.rapidapi.com'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `RapidAPI responded with status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Map JSearch response to our frontend expected format
+      const formattedJobs = (data.data || []).map((job: any) => ({
+        title: job.job_title,
+        company: job.employer_name,
+        location: job.job_city && job.job_country ? `${job.job_city}, ${job.job_country}` : (job.job_location || 'Remote'),
+        source: job.job_publisher || 'Web',
+        url: job.job_apply_link,
+        postedAt: job.job_posted_at_timestamp ? new Date(job.job_posted_at_timestamp * 1000).toLocaleDateString() : 'Active',
+        descriptionSnippet: job.job_description ? job.job_description.substring(0, 200) + '...' : ''
+      }));
+
+      res.json(formattedJobs);
+    } catch (error: any) {
+      console.error("Error fetching jobs from RapidAPI:", error);
+      res.status(500).json({ error: "Failed to fetch jobs from RapidAPI", details: error.message });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");

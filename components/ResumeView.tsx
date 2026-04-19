@@ -13,9 +13,10 @@ interface ResumeViewProps {
   rewrittenAchievements: string[];
   originalResumeName: string | undefined;
   onUpdateResume: (newText: string) => void;
+  onOpenDesigner?: () => void;
 }
 
-export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummary, coverLine, coverLetter, rewrittenAchievements, originalResumeName, onUpdateResume }) => {
+export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummary, coverLine, coverLetter, rewrittenAchievements, originalResumeName, onUpdateResume, onOpenDesigner }) => {
   const [activeTab, setActiveTab] = useState('resume');
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -153,10 +154,17 @@ export const ResumeView: React.FC<ResumeViewProps> = ({ customResume, diffSummar
                               </button>
                               <button 
                                 onClick={handleDownloadResumePdf} 
-                                className="flex items-center gap-2 px-4 py-1.5 bg-system-blue text-white rounded-full text-[10px] font-bold shadow-apple-button hover:bg-system-blue-hover transition-all active:scale-95"
+                                className="flex items-center gap-2 px-4 py-1.5 bg-gray-100 text-gray-700 rounded-full text-[10px] font-bold hover:bg-gray-200 transition-all active:scale-95"
                               >
                                 <DownloadIcon className="w-3 h-3"/>
-                                <span>Download PDF</span>
+                                <span>Download Simple PDF</span>
+                              </button>
+                              <button 
+                                onClick={onOpenDesigner} 
+                                className="flex items-center gap-2 px-6 py-1.5 bg-blue-600 text-white rounded-full text-[10px] font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
+                              >
+                                <span className="text-xs">✨</span>
+                                <span>Design Pro Resume</span>
                               </button>
                           </div>
                       )}

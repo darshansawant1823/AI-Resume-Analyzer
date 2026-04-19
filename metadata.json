@@ -1,5 +1,5 @@
 {
   "name": "AI Resume Analyzer",
   "description": "An AI-powered assistant that scores your resume against a job description, provides detailed feedback, and generates an optimized version to help you land your next job.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["geolocation"]
 }

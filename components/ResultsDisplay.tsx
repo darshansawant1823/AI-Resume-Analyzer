@@ -6,11 +6,13 @@ import { BreakdownAccordion } from './BreakdownAccordion';
 import { SuggestionsList } from './SuggestionsList';
 import { ResumeView } from './ResumeView';
 import { RecruiterScan } from './RecruiterScan';
-import { RefreshCw, Sparkles, AlertCircle, CheckCircle2, TrendingUp, Target, BrainCircuit, MessageSquareQuote, Briefcase, Compass, ArrowRight, Map, Activity, Trophy, Zap, Download, Check } from 'lucide-react';
+import { RefreshCw, Sparkles, AlertCircle, CheckCircle2, TrendingUp, Target, BrainCircuit, MessageSquareQuote, Briefcase, ArrowRight, Download, Check } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { ResumeDesigner } from './ResumeDesigner';
+import { JobMatches } from './JobMatches';
 
 interface ResultsDisplayProps {
   result: AnalysisResult | null;
@@ -120,8 +122,8 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
   result, isLoading, error, onResumeReset, originalResumeName, onUpdateResume, resumeFile, jobDescription, onAskAI, user
 }) => {
   const [view, setView] = useState<'analysis' | 'scan'>('analysis');
-  const [selectedPath, setSelectedPath] = useState<AnalysisResult['career_path_suggestions'][0] | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [showDesigner, setShowDesigner] = useState(false);
 
   const handleDownloadPDF = async () => {
     if (!result) return;
@@ -420,217 +422,25 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
                       rewrittenAchievements={result.top_3_rewritten_achievements}
                       originalResumeName={originalResumeName}
                       onUpdateResume={onUpdateResume}
+                      onOpenDesigner={() => setShowDesigner(true)}
                   />
               </div>
 
-              {/* Enhanced Career Path Suggestions */}
-              {result.career_path_suggestions && result.career_path_suggestions.length > 0 && (
-                <div className="w-full bg-white p-8 rounded-[2rem] shadow-apple-card border border-gray-100 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-400">
-                  <div className="flex items-center justify-between mb-8">
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        <Compass className="w-6 h-6 text-system-blue" />
-                        AI Career Path Suggestions
-                      </h3>
-                      <p className="text-sm text-gray-500 mt-1">Strategic pivots based on your current skill set and market trends.</p>
-                    </div>
-                    <div className="hidden sm:flex items-center gap-2 text-[10px] font-bold text-system-blue bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
-                      <Sparkles className="w-3 h-3" />
-                      PERSONALIZED FOR YOU
-                    </div>
-                  </div>
+              {/* Job Matches Section (Replaced Career Suggestions) */}
+              <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-500 delay-400">
+                <JobMatches 
+                  resumeText={result.custom_resume_text || result.structured_resume?.basics?.summary || result.breakdown.core_skills.details.join(' ')} 
+                  initialJobs={result.matched_jobs}
+                  suggestedTitle={result.structured_resume?.basics?.label || result.structured_resume?.work?.[0]?.position}
+                />
+              </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {result.career_path_suggestions.map((path, i) => (
-                      <div 
-                        key={i} 
-                        onClick={() => setSelectedPath(path)}
-                        className="group relative bg-gray-50 hover:bg-white hover:shadow-xl hover:shadow-gray-200/50 border border-gray-100 p-6 rounded-3xl transition-all duration-300 cursor-pointer"
-                      >
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="p-3 bg-white rounded-2xl shadow-sm border border-gray-100 group-hover:bg-system-blue group-hover:text-white transition-colors">
-                            <Briefcase className="w-5 h-5" />
-                          </div>
-                          <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 group-hover:text-system-blue transition-colors">
-                            VIEW PATH <ArrowRight className="w-3 h-3" />
-                          </div>
-                        </div>
-
-                        <h4 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-system-blue transition-colors">{path.role}</h4>
-                        
-                        <div className="mb-4">
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Why this fits</p>
-                          <p className="text-sm text-gray-600 leading-relaxed">{path.reason}</p>
-                        </div>
-
-                        <div className="space-y-3">
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recommended Upskilling</p>
-                          <div className="flex flex-wrap gap-2">
-                            {path.skills_to_add.map((skill, j) => (
-                              <span key={j} className="px-3 py-1 bg-white text-gray-700 text-xs font-semibold rounded-full border border-gray-100 shadow-sm group-hover:border-blue-100 group-hover:text-system-blue transition-colors">
-                                {skill}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        {/* Decorative element */}
-                        <div className="absolute bottom-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                          <Map className="w-12 h-12 text-gray-900" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  <div className="mt-8 p-4 bg-blue-50/30 rounded-2xl border border-blue-100/50 flex items-center gap-3">
-                    <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm">
-                      <Sparkles className="w-4 h-4 text-system-blue" />
-                    </div>
-                    <p className="text-xs text-blue-800 font-medium">
-                      These suggestions are generated by analyzing your transferable skills and the current demand in the {result.market_fit?.[0]?.industry || 'tech'} industry.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Career Bridge Modal */}
-              {selectedPath && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-                  <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
-                    {/* Modal Header */}
-                    <div className="p-8 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-                      <div className="flex items-center gap-4">
-                        <div className="p-4 bg-white rounded-2xl shadow-sm text-system-blue">
-                          <Map className="w-8 h-8" />
-                        </div>
-                        <div>
-                          <h3 className="text-2xl font-black text-gray-900 tracking-tight">Career Bridge: {selectedPath.role}</h3>
-                          <p className="text-sm text-gray-500 font-medium">Your personalized 90-day roadmap to transition</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => setSelectedPath(null)}
-                        className="p-3 hover:bg-gray-100 rounded-full transition-colors"
-                      >
-                        <RefreshCw className="w-6 h-6 text-gray-400 rotate-45" />
-                      </button>
-                    </div>
-
-                    {/* Modal Content */}
-                    <div className="flex-1 overflow-y-auto p-8 bg-white">
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        {/* Left Column: Market Intelligence */}
-                        <div className="space-y-6">
-                          <div className="p-6 bg-blue-50/50 rounded-3xl border border-blue-100">
-                            <h5 className="text-xs font-black text-system-blue uppercase tracking-widest mb-4 flex items-center gap-2">
-                              <Activity className="w-4 h-4" />
-                              Market Intelligence
-                            </h5>
-                            <div className="space-y-4">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm text-gray-600 font-medium">Salary Impact</span>
-                                <span className="text-sm font-bold text-gray-900">{selectedPath.salary_impact}</span>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm text-gray-600 font-medium">Ease of Pivot</span>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                    <div 
-                                      className="h-full bg-system-blue" 
-                                      style={{ width: `${selectedPath.ease_of_pivot}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-sm font-bold text-gray-900">{selectedPath.ease_of_pivot}%</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="p-6 bg-purple-50/50 rounded-3xl border border-purple-100">
-                            <h5 className="text-xs font-black text-purple-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-                              <Trophy className="w-4 h-4" />
-                              Skill Bridge
-                            </h5>
-                            <div className="space-y-3">
-                              {selectedPath.skills_to_add.map((skill, i) => (
-                                <div key={i} className="flex items-center gap-3 p-3 bg-white rounded-xl shadow-sm border border-purple-100/50">
-                                  <div className="w-2 h-2 bg-purple-400 rounded-full" />
-                                  <span className="text-sm font-bold text-gray-700">{skill}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          <button 
-                            onClick={() => {
-                              setSelectedPath(null);
-                              onAskAI();
-                            }}
-                            className="w-full p-4 bg-gray-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-all shadow-lg"
-                          >
-                            <Zap className="w-5 h-5 text-yellow-400" />
-                            Practice Interview for this Role
-                          </button>
-                        </div>
-
-                        {/* Right Column: Roadmap (2/3 width) */}
-                        <div className="lg:col-span-2 space-y-8">
-                          <div className="relative">
-                            <div className="absolute left-[27px] top-8 bottom-8 w-0.5 bg-gray-100" />
-                            <div className="space-y-12">
-                              {selectedPath.roadmap?.map((phase, i) => (
-                                <div key={i} className="relative pl-16">
-                                  <div className="absolute left-0 top-0 w-14 h-14 bg-white rounded-2xl shadow-apple-card border border-gray-100 flex items-center justify-center z-10">
-                                    <span className="text-xl font-black text-system-blue">{i + 1}</span>
-                                  </div>
-                                  <div className="flex items-center gap-3 mb-2">
-                                    <h4 className="text-xl font-black text-gray-900">{phase.phase}</h4>
-                                    <span className="px-3 py-1 bg-gray-100 text-gray-500 text-[10px] font-black rounded-full uppercase tracking-widest">
-                                      {phase.duration}
-                                    </span>
-                                  </div>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {phase.tasks.map((task, ti) => (
-                                      <div key={ti} className="flex items-start gap-3 p-4 bg-gray-50/50 rounded-2xl border border-gray-100/50 hover:bg-white hover:shadow-sm transition-all group">
-                                        <div className="mt-1 p-1 bg-white rounded-md shadow-sm group-hover:bg-system-blue group-hover:text-white transition-colors">
-                                          <Check className="w-3 h-3" />
-                                        </div>
-                                        <span className="text-sm text-gray-600 font-medium leading-relaxed">{task}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Modal Footer */}
-                    <div className="p-8 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
-                      <p className="text-xs text-gray-400 font-medium max-w-md">
-                        This roadmap is AI-generated based on your current resume and market trends. 
-                        Focus on building projects to validate your new skills.
-                      </p>
-                      <div className="flex items-center gap-4">
-                        <button 
-                          onClick={() => setSelectedPath(null)}
-                          className="px-8 py-3 text-gray-600 font-bold hover:text-gray-900 transition-colors"
-                        >
-                          Close
-                        </button>
-                        <button 
-                          onClick={() => window.print()}
-                          className="px-8 py-3 bg-system-blue text-white font-bold rounded-2xl hover:bg-system-blue-hover transition-all shadow-apple-button flex items-center gap-2"
-                        >
-                          <Download className="w-5 h-5" />
-                          Save Roadmap
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              {showDesigner && result.structured_resume && (
+                <ResumeDesigner 
+                  data={result.structured_resume}
+                  onBack={() => setShowDesigner(false)}
+                  originalResumeName={originalResumeName}
+                />
               )}
             </div>
           </div>

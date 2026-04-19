@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import type { 
   Candidate,
   AnalysisResult, 
@@ -145,10 +145,46 @@ const buildSystemInstruction = (): string => {
       "contact_info_missing": {
         "email": "boolean",
         "phone": "boolean"
+      },
+      "structured_resume": {
+        "basics": {
+          "name": "string",
+          "label": "string",
+          "email": "string",
+          "phone": "string",
+          "url": "string",
+          "summary": "string",
+          "location": { "city": "string", "countryCode": "string" }
+        },
+        "work": [
+          { "company": "string", "position": "string", "startDate": "string", "endDate": "string", "summary": "string", "highlights": ["string"] }
+        ],
+        "education": [
+          { "institution": "string", "area": "string", "studyType": "string", "startDate": "string", "endDate": "string" }
+        ],
+        "skills": [
+          { "name": "string", "level": "string", "keywords": ["string"] }
+        ],
+        "awards": [
+          { "title": "string", "date": "string", "awarder": "string", "summary": "string" }
+        ],
+        "publications": [
+          { "name": "string", "publisher": "string", "releaseDate": "string", "website": "string", "summary": "string" }
+        ],
+        "volunteer": [
+          { "organization": "string", "position": "string", "startDate": "string", "endDate": "string", "summary": "string", "highlights": ["string"] }
+        ],
+        "projects": [
+          { "name": "string", "startDate": "string", "endDate": "string", "summary": "string", "highlights": ["string"], "url": "string" }
+        ],
+        "languages": [
+          { "language": "string", "fluency": "string" }
+        ]
       }
     }
 
     CRITICAL CONSTRAINTS:
+    - FOR "structured_resume", map ALL the sections from the resume into this structured format. Ensure dates are consistent (e.g., "Aug 2024").
     - NEVER add skills, tools, or experiences that are not explicitly mentioned in the source resume.
     - If a skill is required by the JD but missing from the resume, list it in 'missing_items_prioritized' but DO NOT include it in the 'custom_resume_text'.
     - Check for the presence of an email address and a phone number. Set the corresponding boolean in 'contact_info_missing' to true if they are missing.
@@ -272,6 +308,67 @@ export const analyzeResume = async (
   } catch (error) {
     console.error("Error calling Gemini API or parsing response:", error);
     throw new Error("Failed to get a valid analysis from the AI model.");
+  }
+};
+
+export const findMatchedJobs = async (
+  resumeText: string,
+  locationFilter?: string
+): Promise<AnalysisResult['matched_jobs']> => {
+  try {
+    const ai = getAI();
+    const prompt = `
+      You are a high-precision job search assistant. 
+      Use Google Search Grounding to find 6-10 ACTIVE, LIVE job postings for the candidate based on their resume.
+
+      PRIORITY SOURCES:
+      1. LinkedIn (site:linkedin.com/jobs) - HIGH PRIORITY
+      2. Naukri (site:naukri.com) - HIGH PRIORITY
+      3. Glassdoor, Indeed, and Company Career Pages.
+
+      STRICT CONSTRAINTS:
+      - ONLY include jobs posted in the LAST 30 DAYS.
+      - DO NOT hallucinate URLs. Every URL must be a direct, clickable link to the job posting.
+      - Ensure the "source" field is accurate (e.g., if the URL is on linkedin.com, source is "LinkedIn").
+      - If a location is provided, only return jobs in that specific region.
+      
+      LOCATION FILTER: ${locationFilter ? `STRICTLY focus on "${locationFilter}"` : "Prioritize tech hubs or the candidate's current location if evident."}
+
+      RESUME CONTEXT (First 3000 chars):
+      ${resumeText.substring(0, 3000)}
+
+      Return the results as a JSON array of objects.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: FLASH_MODEL,
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              company: { type: Type.STRING },
+              location: { type: Type.STRING },
+              source: { type: Type.STRING, description: "Website name (e.g., LinkedIn, Naukri)" },
+              url: { type: Type.STRING, description: "The clickable link to the job" },
+              postedAt: { type: Type.STRING, description: "Relative time (e.g., '2 days ago')" },
+              descriptionSnippet: { type: Type.STRING },
+            },
+            required: ["title", "company", "location", "source", "url", "postedAt", "descriptionSnippet"]
+          }
+        }
+      }
+    });
+
+    return JSON.parse(response.text.trim());
+  } catch (error) {
+    console.error("Error in findMatchedJobs:", error);
+    return [];
   }
 };
 
@@ -832,17 +929,28 @@ export const generateComparisonSummary = async (candidates: Candidate[], jdText:
   `;
 
   const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: FLASH_MODEL,
-    contents: [{ parts: [{ text: prompt }] }],
-    config: { 
-      systemInstruction,
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-      temperature: 0.2 
-    }
-  });
+  try {
+    const response = await ai.models.generateContent({
+      model: PRO_MODEL,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: { 
+        systemInstruction,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        temperature: 0.2 
+      }
+    });
 
-  return response.text.trim();
+    return response.text.trim();
+  } catch (error: any) {
+    console.error("Comparison Summary API Error:", error);
+    if (error.message?.includes("429") || error.message?.includes("quota")) {
+      throw new Error("AI Comparison is currently at capacity. Please try again in a few minutes.");
+    }
+    if (error.message?.includes("API key")) {
+      throw new Error("API Key configuration issue. Please check your Secrets tab.");
+    }
+    throw error;
+  }
 };
 
 export const getAdminInsights = async (stats: {

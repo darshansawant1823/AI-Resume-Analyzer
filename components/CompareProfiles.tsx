@@ -72,9 +72,10 @@ export const CompareProfiles: React.FC<CompareProfilesProps> = ({ candidates, jd
       const summary = await generateComparisonSummary(candidates, jdText);
       setAiSummary(summary);
       setSummaryProgress(100);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Summary error details:", error);
-      setAiSummary("Failed to generate AI summary. This might be due to a temporary connection issue or high traffic. Please try again.");
+      const errorMsg = error.message || "Failed to generate AI summary. Please try again.";
+      setAiSummary(errorMsg);
     } finally {
       setTimeout(() => setIsSummarizing(false), 500);
     }

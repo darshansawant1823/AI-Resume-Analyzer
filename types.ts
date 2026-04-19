@@ -69,7 +69,16 @@ export interface AnalysisResult {
   top_3_rewritten_achievements: string[];
   explanations: string[];
   highlight_keywords: string[];
-  career_path_suggestions: {
+  matched_jobs?: {
+    title: string;
+    company: string;
+    location: string;
+    source: string;
+    url: string;
+    postedAt: string;
+    descriptionSnippet: string;
+  }[];
+  career_path_suggestions?: {
     role: string;
     reason: string;
     skills_to_add: string[];
@@ -96,8 +105,82 @@ export interface AnalysisResult {
     email: boolean;
     phone: boolean;
   };
+  structured_resume?: StructuredResume;
   usage?: UsageMetadata;
 }
+
+export interface StructuredResume {
+  basics: {
+    name: string;
+    label: string;
+    email: string;
+    phone: string;
+    url: string;
+    summary: string;
+    location: {
+      city: string;
+      countryCode: string;
+    };
+  };
+  work: {
+    company: string;
+    position: string;
+    website?: string;
+    startDate: string;
+    endDate: string;
+    summary: string;
+    highlights: string[];
+  }[];
+  education: {
+    institution: string;
+    area: string;
+    studyType: string;
+    startDate: string;
+    endDate: string;
+    score?: string;
+    courses?: string[];
+  }[];
+  skills: {
+    name: string;
+    level: string;
+    keywords: string[];
+  }[];
+  awards?: {
+    title: string;
+    date: string;
+    awarder: string;
+    summary: string;
+  }[];
+  publications?: {
+    name: string;
+    publisher: string;
+    releaseDate: string;
+    website: string;
+    summary: string;
+  }[];
+  volunteer?: {
+    organization: string;
+    position: string;
+    startDate: string;
+    endDate: string;
+    summary: string;
+    highlights: string[];
+  }[];
+  projects?: {
+    name: string;
+    startDate: string;
+    endDate: string;
+    summary: string;
+    highlights: string[];
+    url?: string;
+  }[];
+  languages?: {
+    language: string;
+    fluency: string;
+  }[];
+}
+
+export type ResumeTemplateId = 'executive' | 'modern' | 'creative' | 'minimal';
 
 // --- Recruiter Portal Types ---
 
