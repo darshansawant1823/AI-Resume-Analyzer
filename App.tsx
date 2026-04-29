@@ -27,7 +27,8 @@ const App: React.FC = () => {
   const { profile, updateProfile, loading: profileLoading } = useFirestoreSync(user);
 
   const { clearAllData: clearRecruiterData } = useRecruiterData(user);
-  const { clearAllData: clearInterviewData, saveInterview } = useInterviewData(user);
+  const { clearAllData: clearInterviewData, saveInterview, updateInterview } = useInterviewData(user);
+  const [currentInterviewId, setCurrentInterviewId] = useState<string | null>(null);
 
   // Removed session clearing logic to preserve data accuracy
   useEffect(() => {
@@ -217,12 +218,13 @@ const App: React.FC = () => {
       }
 
       if (user) {
-        await saveInterview({
+        const id = await saveInterview({
           type: 'analysis',
           jobDescription,
           resumeName: resumeFile?.name || profile?.lastResumeName || 'Cached Resume',
           result
         });
+        setCurrentInterviewId(id);
       }
     } catch (err) {
       console.error(err);
@@ -241,11 +243,18 @@ const App: React.FC = () => {
     setActiveTab('input');
   };
 
-  const handleUpdateResume = (newText: string) => {
+  const handleUpdateResume = async (newText: string) => {
     setAnalysisResult(prevResult => {
       if (!prevResult) return null;
       return { ...prevResult, custom_resume_text: newText };
     });
+
+    // Also update saved session if exists
+    if (user && currentInterviewId) {
+      await updateInterview(currentInterviewId, {
+        'result.custom_resume_text': newText
+      });
+    }
   };
   
   const isButtonDisabled = !jobDescription || (!resumeFile && !selectedResumeId) || isLoading;

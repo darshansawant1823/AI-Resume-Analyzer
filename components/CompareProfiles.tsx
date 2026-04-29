@@ -52,16 +52,21 @@ export const CompareProfiles: React.FC<CompareProfilesProps> = ({ candidates, jd
     return () => clearInterval(interval);
   }, [isSummarizing]);
 
-  const candidateIds = candidates.map(c => c.id).join(',');
-  const analysisStatus = candidates.map(c => !!c.analysis).join(',');
+  // Sort candidates by match score so the AI recommendation (highest score) shows first
+  const sortedCandidates = useMemo(() => {
+    return [...candidates].sort((a, b) => (b.analysis?.match_score || 0) - (a.analysis?.match_score || 0));
+  }, [candidates]);
+
+  const candidateIds = sortedCandidates.map(c => c.id).join(',');
+  const analysisStatus = sortedCandidates.map(c => !!c.analysis).join(',');
 
   const fetchSummary = async () => {
-    if (candidates.length < 2) {
+    if (sortedCandidates.length < 2) {
       setAiSummary(null);
       return;
     }
     
-    if (candidates.some(c => !c.analysis)) {
+    if (sortedCandidates.some(c => !c.analysis)) {
       setAiSummary("Waiting for candidate analysis to complete...");
       return;
     }
@@ -69,7 +74,7 @@ export const CompareProfiles: React.FC<CompareProfilesProps> = ({ candidates, jd
     setIsSummarizing(true);
     setSummaryProgress(5);
     try {
-      const summary = await generateComparisonSummary(candidates, jdText);
+      const summary = await generateComparisonSummary(sortedCandidates, jdText);
       setAiSummary(summary);
       setSummaryProgress(100);
     } catch (error: any) {
@@ -86,7 +91,7 @@ export const CompareProfiles: React.FC<CompareProfilesProps> = ({ candidates, jd
   }, [candidateIds, jdText, analysisStatus]);
 
   // Determine layout based on candidate count
-  const gridCols = candidates.length === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-3';
+  const gridCols = sortedCandidates.length === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-3';
 
   // --- Helpers ---
 
@@ -403,8 +408,8 @@ export const CompareProfiles: React.FC<CompareProfilesProps> = ({ candidates, jd
                           <SparklesIcon className="w-5 h-5 text-system-blue" />
                       </div>
                       <div>
-                          <h2 className="text-lg font-bold text-gray-900">AI Smart Comparison</h2>
-                          <p className="text-xs text-gray-500 font-medium">Synthesized analysis of {candidates.length} candidates</p>
+                          <h2 className="text-lg font-bold text-gray-900">AI Selection Recommendation</h2>
+                          <p className="text-xs text-gray-500 font-medium">Why we recommend {sortedCandidates[0]?.name || 'a candidate'}</p>
                       </div>
                   </div>
 
@@ -451,13 +456,21 @@ export const CompareProfiles: React.FC<CompareProfilesProps> = ({ candidates, jd
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 pt-0 print:p-0 print:max-w-none">
           <div className={`grid grid-cols-1 ${gridCols} gap-6 print-grid print:gap-8`}>
-            {candidates.map((c, idx) => {
+            {sortedCandidates.map((c, idx) => {
                 const analysis = c.analysis;
                 const isBaseline = baselineId === c.id;
                 const showDelta = baselineId && !isBaseline;
+                const isRecommended = idx === 0 && (analysis?.match_score || 0) >= 60;
                 
                 return (
-                    <div key={c.id} className={`bg-white rounded-3xl shadow-sm border ${isBaseline ? 'border-system-blue ring-2 ring-blue-100' : 'border-gray-200'} overflow-hidden print:overflow-visible flex flex-col print-card transition-all duration-300`}>
+                    <div key={c.id} className={`bg-white rounded-3xl shadow-sm border ${isRecommended ? 'border-system-blue ring-2 ring-blue-100' : isBaseline ? 'border-gray-900 border-2' : 'border-gray-200'} overflow-hidden print:overflow-visible flex flex-col print-card transition-all duration-300 relative`}>
+                        {isRecommended && (
+                          <div className="absolute top-0 right-0 p-3 z-20">
+                            <div className="bg-system-blue text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-lg shadow-blue-200 flex items-center gap-1">
+                              <SparklesIcon className="w-3 h-3" /> AI Recommended
+                            </div>
+                          </div>
+                        )}
                         {/* Card Header */}
                         <div className="p-6 border-b border-gray-100 relative bg-gradient-to-b from-white to-gray-50/30 print:p-8">
                             <div className="flex justify-between items-start mb-3">

@@ -35,7 +35,7 @@ export const useRecruiterData = (user: any) => {
    // Listen to candidates
    const candidatesQuery = query(
      collection(db, `users/${uid}/candidates`),
-     orderBy('createdAt', 'desc')
+     orderBy('createdAt', 'asc')
    );
 
    const unsubscribeCandidates = onSnapshot(candidatesQuery, (snapshot) => {
@@ -95,9 +95,20 @@ export const useRecruiterData = (user: any) => {
    const data = {
      ...serializableCandidate,
      createdAt: candidate.createdAt || new Date().toISOString(),
-     updatedAt: new Date().toISOString()
+     updatedAt: new Date().toISOString(),
+     isShortlisted: candidate.isShortlisted || false
    };
    await setDoc(doc(db, `users/${user.uid}/candidates/${candidate.id}`), data);
+ };
+
+ const toggleShortlist = async (id: string) => {
+   if (!user) return;
+   const cand = candidates.find(c => c.id === id);
+   if (!cand) return;
+   await updateDoc(doc(db, `users/${user.uid}/candidates/${id}`), {
+     isShortlisted: !cand.isShortlisted,
+     updatedAt: new Date().toISOString()
+   });
  };
 
  const deleteCandidate = async (id: string) => {
@@ -115,11 +126,20 @@ export const useRecruiterData = (user: any) => {
  };
 
  const saveProject = async (project: Omit<Project, 'id'>) => {
-   if (!user) return;
+   if (!user) return null;
    const id = Date.now().toString();
    await setDoc(doc(db, `users/${user.uid}/projects/${id}`), {
      ...project,
      id,
+     updatedAt: new Date().toISOString()
+   });
+   return id;
+ };
+
+ const updateProject = async (id: string, data: Partial<Project>) => {
+   if (!user) return;
+   await updateDoc(doc(db, `users/${user.uid}/projects/${id}`), {
+     ...data,
      updatedAt: new Date().toISOString()
    });
  };
@@ -160,7 +180,9 @@ export const useRecruiterData = (user: any) => {
    saveCandidate,
    deleteCandidate,
    saveJDAnalysis,
+   toggleShortlist,
    saveProject,
+   updateProject,
    deleteProject,
    archiveAllCandidates,
    clearAllData

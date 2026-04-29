@@ -493,6 +493,12 @@ export const analyzeCandidate = async (
         "jobType": "string (the candidate's current or target job title)",
         "category": "string (Smartly categorize the candidate into a broad field like 'UX Design', 'Frontend Development', 'Backend Development', 'Data Science', 'Product Management', 'Marketing', 'Sales', etc. based on their overall profile)",
         "outreach_draft": "string (A personalized, professional outreach message for this specific candidate based on their strengths and the JD)",
+        "match_parameters": {
+            "skills": { "score": number (0-100), "details": "string (concise explanation)" },
+            "experience": { "score": number (0-100), "details": "string (concise explanation)" },
+            "location": { "score": number (0-100), "details": "string (concise explanation)" },
+            "industry": { "score": number (0-100), "details": "string (concise explanation)" }
+        },
         "breakdown": {
             "core_skills": { "score": number (0-30), "details": ["string (concise bullet points)"] },
             "title_alignment": { "score": number (0-20), "details": ["string (concise bullet points)"] },
@@ -558,6 +564,7 @@ export const analyzeJobDescription = async (jobDescription: string): Promise<JDA
     5. Identify red flags in the writing (e.g. "rockstar", "unlimited overtime").
     6. Rewrite the JD to be perfect, inclusive, and structured.
     7. Create a competency model (list of competencies required).
+    8. Extract a concise Job Title.
 
     OUTPUT JSON ONLY. The response must match this schema exactly:
     {
@@ -568,22 +575,32 @@ export const analyzeJobDescription = async (jobDescription: string): Promise<JDA
       "nice_to_haves": ["string"],
       "red_flags_in_jd": ["string"],
       "rewritten_jd": "string",
-      "competency_model": ["string"]
+      "competency_model": ["string"],
+      "jobTitle": "string"
     }
   `;
 
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: FLASH_MODEL,
-    contents: [{ parts: [{ text: `JOB DESCRIPTION:\n${jobDescription}` }] }],
-    config: { 
-      systemInstruction,
-      temperature: 0.0, 
-      responseMimeType: "application/json" 
-    }
-  });
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: FLASH_MODEL,
+      contents: [{ parts: [{ text: `JOB DESCRIPTION:\n${jobDescription}` }] }],
+      config: { 
+        systemInstruction,
+        temperature: 0.0, 
+        responseMimeType: "application/json" 
+      }
+    });
 
-  return JSON.parse(response.text.replace(/^```json\s*|```$/g, ''));
+    const jsonString = response.text.trim();
+    // More robust JSON cleaning
+    const cleanedJsonString = jsonString.replace(/^```json\s*|```$/g, '').trim();
+    
+    return JSON.parse(cleanedJsonString);
+  } catch (error) {
+    console.error("Error in analyzeJobDescription:", error);
+    throw new Error("Failed to analyze the job description. Please check your connection and try again.");
+  }
 };
 
 export const simplifyResume = async (resume: { text?: string; base64Data?: string; mimeType?: string; }): Promise<string> => {

@@ -46,11 +46,22 @@ export const useInterviewData = (user: any) => {
  }, [user]);
 
  const saveInterview = async (data: any) => {
-   if (!user) return;
+   if (!user) return null;
    const id = Math.random().toString(36).substr(2, 9);
    await setDoc(doc(db, `users/${user.uid}/interviews/${id}`), {
      ...data,
+     id,
      createdAt: new Date().toISOString()
+   });
+   return id;
+ };
+
+ const updateInterview = async (id: string, data: any) => {
+   if (!user) return;
+   const { updateDoc } = await import('firebase/firestore');
+   await updateDoc(doc(db, `users/${user.uid}/interviews/${id}`), {
+     ...data,
+     updatedAt: new Date().toISOString()
    });
  };
 
@@ -67,6 +78,7 @@ export const useInterviewData = (user: any) => {
    history,
    loading,
    saveInterview,
+   updateInterview,
    clearAllData
  };
 };

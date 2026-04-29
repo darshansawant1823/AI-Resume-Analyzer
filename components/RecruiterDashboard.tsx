@@ -6,7 +6,7 @@ import type { Candidate, CandidateAnalysis, JDAnalysis, InterviewScript, CrossDo
 // Add extractTextFromFile to the imported services
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { ChevronRight, AlertTriangle, RefreshCw, Clock, Trash2 } from 'lucide-react';
+import { ChevronRight, AlertTriangle, RefreshCw, Clock, Trash2, Save, Bookmark, User as UserIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { analyzeCandidate, analyzeJobDescription, simplifyResume, generateInterviewScript, performCrossDomainAnalysis, extractTextFromFile, performFlashScan } from '../services/geminiService';
 import { UploadIcon } from './icons/UploadIcon';
@@ -42,7 +42,7 @@ interface RecruiterDashboardProps {
 }
 
 export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) => {
-  const { candidates: persistedCandidates, saveCandidate, deleteCandidate, saveJDAnalysis, archiveAllCandidates } = useRecruiterData(user);
+  const { candidates: persistedCandidates, saveCandidate, deleteCandidate, saveJDAnalysis, archiveAllCandidates, saveProject, updateProject, toggleShortlist, projects } = useRecruiterData(user);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'jd-audit'>('dashboard');
   const [viewMode, setViewMode] = useState<'list' | 'compare' | 'chat' | 'candidate-details'>('list'); 
   const [jobDescription, setJobDescription] = useState('');
@@ -105,7 +105,10 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
   
   // Toast for Compare Limit
   const [showCompareToast, setShowCompareToast] = useState(false);
+  const [showShortlistToast, setShowShortlistToast] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isChatPanelOpen, setIsChatPanelOpen] = useState(false);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
 
   // Delete Confirmation State
   const [candidateToDelete, setCandidateToDelete] = useState<Candidate | null>(null);
@@ -172,6 +175,15 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
             };
             setCandidates(prev => prev.map(c => c.id === candidate.id ? updatedCandidate : c));
             await saveCandidate(updatedCandidate);
+
+            // Update current project if exists
+            if (user && currentProjectId) {
+              const currentProject = projects.find(p => p.id === currentProjectId);
+              if (currentProject) {
+                const newCandidateIds = Array.from(new Set([...(currentProject.candidateIds || []), updatedCandidate.id]));
+                await updateProject(currentProjectId, { candidateIds: newCandidateIds });
+              }
+            }
        } catch (err) {
             console.error(`Analysis failed for candidate ${candidate.id}:`, err);
             const errorCandidate = { ...candidate, status: 'error' as const };
@@ -281,6 +293,54 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
       await processCandidate(candidate, jobDescription);
   };
 
+  const handleShortlistSelected = async () => {
+    if (selectedIds.size === 0 || !user) return;
+    
+    // Intelligently name the Job Title
+    let title = jdAnalysis?.jobTitle;
+    if (!title && jobDescription) {
+        try {
+            const analysis = await analyzeJobDescription(jobDescription);
+            title = analysis.jobTitle;
+            setJdAnalysis(analysis);
+        } catch (e) {
+            title = "Untitled Recruitment Project";
+        }
+    }
+    if (!title) title = "Recruitment Project";
+
+    // Mark selected candidates as shortlisted individually
+    const selectedCandidatesList = candidates.filter(c => selectedIds.has(c.id));
+    for (const c of selectedCandidatesList) {
+      if (!c.isShortlisted) {
+        await toggleShortlist(c.id);
+      }
+    }
+    
+    // Create a project for this recruitment session
+    await saveProject({
+      name: title,
+      jobTitle: title,
+      jd: jobDescription,
+      jdAnalysis: jdAnalysis,
+      candidateIds: Array.from(selectedIds),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Show feedback
+    setShowShortlistToast(true);
+    setTimeout(() => setShowShortlistToast(false), 3000);
+    
+    // Clear selection
+    setSelectedIds(new Set());
+  };
+
+  const handleToggleShortlist = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    await toggleShortlist(id);
+  };
+
   useEffect(() => {
     setCurrentPage(1);
   }, [candidates.length]);
@@ -324,7 +384,13 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
     );
   };
 
-  const sortedCandidates = [...candidates].sort((a, b) => (b.analysis?.match_score || 0) - (a.analysis?.match_score || 0));
+  const sortedCandidates = useMemo(() => {
+    return [...candidates].sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateA - dateB;
+    });
+  }, [candidates]);
   
   const filteredCandidates = sortedCandidates.filter((c, idx) => {
     // Always show pending/processing/error candidates so the user sees progress
@@ -358,16 +424,28 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
   }, [candidates.map(c => c.status).join(','), sortedCandidates.length, topPicksCount]);
 
   const handleAnalyzeJD = async () => {
-      if(!jobDescription) return;
-      setIsAnalyzingJd(true);
-      setJdAnalysis(null);
-      try {
-          const result = await analyzeJobDescription(jobDescription);
-          setJdAnalysis(result);
-          if (user) {
-              await saveJDAnalysis(jobDescription, result);
-          }
-      } catch (e) { alert("Failed to analyze JD"); } finally { setIsAnalyzingJd(false); }
+    if(!jobDescription) return;
+    setIsAnalyzingJd(true);
+    setJdAnalysis(null);
+    try {
+      const result = await analyzeJobDescription(jobDescription);
+      setJdAnalysis(result);
+      if (user) {
+        await saveJDAnalysis(jobDescription, result);
+        if (result.jobTitle) {
+          const pid = await saveProject({
+            name: result.jobTitle,
+            jobTitle: result.jobTitle,
+            jd: jobDescription,
+            jdAnalysis: result,
+            candidateIds: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+          if (pid) setCurrentProjectId(pid);
+        }
+      }
+    } catch (e) { alert("Failed to analyze JD"); } finally { setIsAnalyzingJd(false); }
   }
 
   const handleCopyJD = () => {
@@ -549,7 +627,7 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
   };
 
   const handleChat = () => {
-      setViewMode('chat');
+    setViewMode('chat');
   };
 
   const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
@@ -1481,6 +1559,11 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
                             Compare supports up to 3 profiles.
                         </div>
                     )}
+                    {showShortlistToast && (
+                        <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-system-blue text-white text-xs font-bold py-2 px-4 rounded-full shadow-lg animate-[fadeIn_0.2s_ease-out] whitespace-nowrap z-30 border border-white/5">
+                            Candidates shortlisted successfully!
+                        </div>
+                    )}
 
                     <div className="flex items-center gap-3 pl-2">
                         <div className="w-8 h-8 bg-system-blue rounded-full flex items-center justify-center text-xs font-black shadow-lg shadow-blue-500/20">
@@ -1493,6 +1576,16 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
                     </div>
 
                     <div className="flex items-center gap-2">
+                        <button 
+                            onClick={handleShortlistSelected}
+                            disabled={selectedIds.size === 0}
+                            className="p-2.5 sm:px-5 sm:py-2.5 bg-system-blue text-white rounded-full transition-all flex items-center gap-2 hover:scale-105 active:scale-95 group disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20"
+                            title="Shortlist Selected"
+                        >
+                            <Bookmark className="w-5 h-5 sm:w-4 sm:h-4 fill-current" />
+                            <span className="hidden sm:inline text-xs font-bold">Shortlist</span>
+                        </button>
+                        <div className="w-px h-6 bg-white/10 mx-1 hidden sm:block"></div>
                         <button 
                             onClick={handleChat}
                             disabled={selectedIds.size === 0}
@@ -1526,7 +1619,9 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl shadow-apple-card border border-white/60 overflow-hidden">
+            <div className="flex flex-col lg:flex-row gap-8">
+        <div className="flex-1 min-w-0 space-y-8 w-full">
+          <div className="bg-white rounded-3xl shadow-apple-card border border-white/60">
                 <div className="w-full">
                     {/* Desktop Table View */}
                     <table className="w-full text-left border-collapse hidden md:table">
@@ -1552,7 +1647,7 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
                                         </th>
                                 <th className="p-5 text-xs font-bold text-gray-500 uppercase tracking-wider">Rank</th>
                                 <th className="p-5 text-xs font-bold text-gray-500 uppercase tracking-wider">Candidate</th>
-                                <th className="p-5 text-xs font-bold text-gray-500 uppercase tracking-wider">Score</th>
+                                <th className="p-5 text-xs font-bold text-gray-500 uppercase tracking-wider text-center">Score</th>
                                 <th className="p-5 text-xs font-bold text-gray-500 uppercase tracking-wider group relative">
                                     Potential
                                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-gray-900 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 font-medium normal-case tracking-normal">
@@ -1596,29 +1691,60 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
                                         </td>
                                         <td className="p-5">
                                             {c.status === 'processing' ? (
-                                                <div className="flex items-center gap-2 text-system-blue">
+                                                <div className="flex flex-col items-center gap-1 text-system-blue">
                                                     <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                                                    <span className="text-[10px] font-black uppercase tracking-widest">Analyzing</span>
+                                                    <span className="text-[9px] font-black uppercase tracking-widest">Analyzing</span>
                                                 </div>
                                             ) : c.status === 'error' ? (
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] font-black uppercase tracking-widest text-red-500 bg-red-50 px-2 py-1 rounded">Failed</span>
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-red-500 bg-red-50 px-2 py-1 rounded">Failed</span>
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); handleReanalyze(c); }}
-                                                        className="text-[10px] font-black uppercase tracking-widest text-system-blue hover:text-blue-700 bg-blue-50 px-2 py-1 rounded transition-colors"
+                                                        className="text-[9px] font-black uppercase tracking-widest text-system-blue hover:text-blue-700 bg-blue-50 px-2 py-1 rounded transition-colors"
                                                     >
                                                         Retry
                                                     </button>
                                                 </div>
                                             ) : c.analysis ? (
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-10 bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                                                        <div className={`h-full rounded-full ${c.analysis.match_score >= 80 ? 'bg-system-green' : c.analysis.match_score >= 40 ? 'bg-system-orange' : 'bg-system-red'}`} style={{ width: `${c.analysis.match_score}%` }}></div>
+                                                <div className="flex flex-col items-center gap-1 group/score relative">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-10 bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                                                            <div className={`h-full rounded-full ${c.analysis.match_score >= 80 ? 'bg-system-green' : c.analysis.match_score >= 40 ? 'bg-system-orange' : 'bg-system-red'}`} style={{ width: `${c.analysis.match_score}%` }}></div>
+                                                        </div>
+                                                        <span className={`text-sm font-black ${c.analysis.match_score >= 80 ? 'text-system-green' : c.analysis.match_score >= 40 ? 'text-system-orange' : 'text-system-red'}`}>{c.analysis.match_score}%</span>
                                                     </div>
-                                                    <span className={`text-sm font-black ${c.analysis.match_score >= 80 ? 'text-system-green' : c.analysis.match_score >= 40 ? 'text-system-orange' : 'text-system-red'}`}>{c.analysis.match_score}%</span>
+                                                    <span className={`text-[9px] font-black uppercase tracking-widest leading-none ${c.analysis.match_score >= 80 ? 'text-system-green' : c.analysis.match_score >= 40 ? 'text-system-orange' : 'text-system-red'}`}>
+                                                        {c.analysis.match_score >= 80 ? 'High' : c.analysis.match_score >= 40 ? 'Medium' : 'Low'}
+                                                    </span>
+
+                                                    {/* Match Insights Popover */}
+                                                    <div className="absolute top-1/2 left-full ml-4 -translate-y-1/2 w-64 bg-gray-900 shadow-2xl border border-white/10 p-4 opacity-0 pointer-events-none group-hover/score:opacity-100 transition-all z-[100] scale-95 group-hover/score:scale-100 rounded-2xl">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Match Insights</span>
+                                                            <div className="px-2 py-0.5 bg-system-blue text-white text-[9px] font-bold rounded-md shadow-lg shadow-blue-500/20">AI Verified</div>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            {c.analysis.grounding_evidence?.map((evidence, idx) => (
+                                                                <div key={idx} className="space-y-1.5">
+                                                                    <div className="flex justify-between items-center text-[10px]">
+                                                                        <span className="font-bold text-white/70">{evidence.parameter}</span>
+                                                                        <span className="text-system-blue font-black">{evidence.score}%</span>
+                                                                    </div>
+                                                                    <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                                                                        <div className="h-full bg-system-blue rounded-full" style={{ width: `${evidence.score}%` }}></div>
+                                                                    </div>
+                                                                    <p className="text-[9px] text-white/50 leading-tight italic">
+                                                                        {evidence.details}
+                                                                    </p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             ) : (
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Queued</span>
+                                                <div className="text-center">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Queued</span>
+                                                </div>
                                             )}
                                         </td>
                                         <td className="p-5 text-sm font-bold text-gray-900">{c.analysis?.potential_score ? `${c.analysis.potential_score}%` : '-'}</td>
@@ -1639,6 +1765,14 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
                                               >
                                                   View Details {c.status === 'analyzed' && <ChevronRight className="w-4 h-4" />}
                                               </button>
+                                              <button 
+                                                   onClick={(e) => handleToggleShortlist(e, c.id)}
+                                                   disabled={c.status !== 'analyzed'}
+                                                   className={`p-2 rounded-full transition-all hover:scale-110 active:scale-90 ${c.status !== 'analyzed' ? 'text-gray-200 cursor-not-allowed' : c.isShortlisted ? 'text-system-blue bg-blue-50' : 'text-gray-400 hover:text-system-blue hover:bg-blue-50'}`}
+                                                   title={c.isShortlisted ? "Remove from Shortlist" : "Add to Shortlist"}
+                                               >
+                                                   <Save className={`w-4 h-4 ${c.isShortlisted ? 'fill-current' : ''}`} />
+                                               </button>
                                               <button 
                                                   onClick={() => setCandidateToDelete(c)}
                                                   className="p-2 text-gray-400 hover:text-red-500 transition-colors hover:bg-red-50 rounded-full"
@@ -1718,6 +1852,14 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
                                                 {isNotEligible ? 'Low Match' : 'View Details'}
                                             </button>
                                             <button 
+                                                onClick={(e) => handleToggleShortlist(e, c.id)}
+                                                disabled={c.status !== 'analyzed'}
+                                                className={`p-2 rounded-full transition-all ${c.status !== 'analyzed' ? 'text-gray-200 cursor-not-allowed' : c.isShortlisted ? 'text-system-blue bg-blue-50' : 'text-gray-400'}`}
+                                                title={c.isShortlisted ? "Remove from Shortlist" : "Add to Shortlist"}
+                                            >
+                                                <Save className={`w-4 h-4 ${c.isShortlisted ? 'fill-current' : ''}`} />
+                                            </button>
+                                            <button 
                                                 onClick={(e) => { e.stopPropagation(); setCandidateToDelete(c); }}
                                                 className="p-2 text-gray-400 hover:text-red-500 transition-colors"
                                             >
@@ -1747,10 +1889,13 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({ user }) 
                     />
                 </div>
               </div>
+
             </div>
-          )}
-        </>
+          </div>
+        </div>
       )}
+    </>
+  )}
 
       {/* Email Modal */}
       {showEmailModal && (

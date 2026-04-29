@@ -217,12 +217,23 @@ export interface CandidateAnalysis {
   training_estimate: string; // e.g., "2 weeks to upskill"
   years_experience: number;
   seniority_level: string;
+  match_parameters?: {
+    skills: { score: number; details: string };
+    experience: { score: number; details: string };
+    location: { score: number; details: string };
+    industry: { score: number; details: string };
+  };
   email?: string;
   phone?: string;
   address?: string;
   jobType?: string;
   category?: string;
   outreach_draft?: string;
+  grounding_evidence?: {
+    parameter: string;
+    score: number;
+    details: string;
+  }[];
   // New fields for Comparison
   breakdown: Breakdown;
   gaps: string[];
@@ -239,6 +250,7 @@ export interface Candidate {
   status: 'pending' | 'processing' | 'analyzed' | 'error';
   flashScan?: string;
   isVerified?: boolean;
+  isShortlisted?: boolean;
   analysis?: CandidateAnalysis;
   crossDomainAnalysis?: CrossDomainAnalysis; // Cache for 24h
   extractedText?: string; // verbatim text for grounding
@@ -249,6 +261,7 @@ export interface Candidate {
 }
 
 export interface JDAnalysis {
+  jobTitle: string;
   clarity_score: number;
   bias_score: number; // Lower is better
   market_fit_score: number;
@@ -374,6 +387,7 @@ export interface InterviewChatResponse {
 export interface Project {
   id: string;
   name: string;
+  jobTitle?: string;
   jd: string;
   jdAnalysis: JDAnalysis | null;
   candidateIds: string[];

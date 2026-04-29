@@ -73,7 +73,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const [isComparing, setIsComparing] = useState(false);
   
   const { history: interviewHistory, loading: loadingInterviews } = useInterviewData(user);
-  const { history, candidates, loading: loadingScans, deleteCandidate } = useRecruiterData(user);
+  const { history, candidates, projects, loading: loadingScans, deleteCandidate, deleteProject } = useRecruiterData(user);
 
   const scanHistory = useMemo(() => {
     // Combine active candidates and past history, remove duplicates if any
@@ -322,6 +322,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                       <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm font-medium" />
                     </div>
                   </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Default View</label>
+                    <div className="flex bg-gray-50 p-1 rounded-2xl border border-gray-100">
+                      <button 
+                        type="button"
+                        onClick={() => onUpdate({ role: 'jobseeker' })}
+                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${profile?.role === 'jobseeker' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                      >
+                        Seeker
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => onUpdate({ role: 'recruiter' })}
+                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${profile?.role === 'recruiter' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                      >
+                        Recruiter
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <button type="submit" disabled={loading} className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-gray-200">
                   <Save className="w-4 h-4" /> Save Changes
@@ -367,13 +386,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                   onClick={() => { setHistoryTab('seeker'); setCurrentPage(1); }}
                   className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${historyTab === 'seeker' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                  Job Seeker
+                  History
                 </button>
                 <button 
                   onClick={() => { setHistoryTab('recruiter'); setCurrentPage(1); }}
                   className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${historyTab === 'recruiter' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                  Recruiter
+                  Recruitment Sessions
                 </button>
               </div>
             </div>
@@ -553,88 +572,139 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="p-8 space-y-6">
+                <div className="p-8 space-y-8">
                   {loadingScans ? (
                     <div className="flex justify-center py-20">
                       <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
                     </div>
-                  ) : paginatedScans.length === 0 ? (
+                  ) : projects.length === 0 ? (
                     <div className="text-center py-20 bg-gray-50 rounded-[2rem] border border-dashed border-gray-200">
-                      <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                      <p className="text-gray-500 font-medium">No scans found matching your search.</p>
+                      <Briefcase className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-500 font-medium">No recruitment sessions found.</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto -mx-8">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-gray-50/50 border-b border-gray-100">
-                            <th className="p-5 pl-8 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Candidate</th>
-                            <th className="p-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Category</th>
-                            <th className="p-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Score</th>
-                            <th className="p-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Exp</th>
-                            <th className="p-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right pr-8">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {paginatedScans.map((c) => (
-                            <tr key={c.id} className="hover:bg-gray-50/50 transition-colors group">
-                              <td className="p-5 pl-8">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-lg">
-                                    📄
-                                  </div>
-                                  <div>
-                                    <div className="font-bold text-gray-900">{c.name}</div>
-                                    <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">
-                                      {new Date(c.createdAt || '').toLocaleDateString()}
-                                    </div>
+                    <div className="space-y-8">
+                      {projects.map((project) => {
+                        const projectCandidates = candidates.filter(c => project.candidateIds?.includes(c.id));
+                        if (projectCandidates.length === 0 && !project.jobTitle) return null;
+                        
+                        return (
+                          <div key={project.id} className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
+                            <div className="p-6 bg-indigo-50/30 border-b border-indigo-100/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                              <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-xl">
+                                  🏢
+                                </div>
+                                <div>
+                                  <h4 className="font-bold text-gray-900">{project.jobTitle || 'Untitled Session'}</h4>
+                                  <div className="flex items-center gap-3 mt-1">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                                      {new Date(project.createdAt || 0).toLocaleDateString()}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-indigo-600 bg-white px-2 py-0.5 rounded-full border border-indigo-100">
+                                      {projectCandidates.length} Candidates
+                                    </span>
                                   </div>
                                 </div>
-                              </td>
-                              <td className="p-5">
-                                {c.analysis?.category ? (
-                                  <span className="px-2 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-bold rounded-lg uppercase tracking-wider">
-                                    {c.analysis.category}
-                                  </span>
-                                ) : (
-                                  <span className="text-xs text-gray-400">Uncategorized</span>
-                                )}
-                              </td>
-                              <td className="p-5">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-indigo-600" style={{ width: `${c.analysis?.match_score || 0}%` }}></div>
-                                  </div>
-                                  <span className="text-sm font-bold text-gray-900">{c.analysis?.match_score || 0}%</span>
-                                </div>
-                              </td>
-                              <td className="p-5">
-                                <span className="text-sm font-bold text-gray-900">{c.analysis?.years_experience || 0}y</span>
-                              </td>
-                              <td className="p-5 text-right pr-8">
-                                <div className="flex items-center justify-end gap-2">
-                                  <button
-                                    onClick={() => toggleCompareSelection(c.id)}
-                                    className={`p-2 rounded-xl transition-all ${
-                                      selectedForCompare.has(c.id) 
-                                        ? 'bg-indigo-600 text-white shadow-md' 
-                                        : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'
-                                    }`}
-                                  >
-                                    {selectedForCompare.has(c.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                                  </button>
-                                  <button 
-                                    onClick={() => deleteCandidate(c.id)}
-                                    className="p-2 text-gray-400 hover:text-red-500 transition-colors"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button 
+                                  onClick={() => {
+                                    setProfileJD(project.jd || '');
+                                    setTopPicks(projectCandidates);
+                                    setIsComparing(true);
+                                  }}
+                                  className="px-4 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-[10px] font-bold hover:bg-indigo-50 transition-all flex items-center gap-2"
+                                  title="Compare all candidates in this session"
+                                >
+                                  <Copy className="w-3 h-3" /> Compare Session
+                                </button>
+                                <button 
+                                  onClick={() => deleteProject(project.id)}
+                                  className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                                  title="Delete Session"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                            
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="bg-gray-50/30 border-b border-gray-100">
+                                    <th className="p-4 pl-8 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Candidate</th>
+                                    <th className="p-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Score</th>
+                                    <th className="p-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Status</th>
+                                    <th className="p-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right pr-8">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                  {projectCandidates.map((c) => (
+                                    <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
+                                      <td className="p-4 pl-8">
+                                        <div className="flex items-center gap-3">
+                                          <div className="w-8 h-8 bg-white rounded-lg shadow-sm flex items-center justify-center text-sm">
+                                            📄
+                                          </div>
+                                          <div>
+                                            <div className="text-xs font-bold text-gray-900">{c.name}</div>
+                                            <div className="text-[10px] text-gray-400">{c.analysis?.category}</div>
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td className="p-4 text-center">
+                                        <span className={`text-xs font-bold ${
+                                          (c.analysis?.match_score || 0) >= 80 ? 'text-green-600' : 
+                                          (c.analysis?.match_score || 0) >= 60 ? 'text-orange-600' : 'text-red-600'
+                                        }`}>
+                                          {c.analysis?.match_score || 0}%
+                                        </span>
+                                      </td>
+                                      <td className="p-4 text-center uppercase tracking-tighter text-[9px] font-bold">
+                                        {c.isShortlisted ? (
+                                           <span className="text-emerald-600 px-2 py-0.5 bg-emerald-50 rounded-full">Shortlisted</span>
+                                        ) : (
+                                           <span className="text-gray-400">Standard</span>
+                                        )}
+                                      </td>
+                                      <td className="p-4 text-right pr-8">
+                                          <div className="flex items-center justify-end gap-2">
+                                              <button 
+                                                onClick={() => {
+                                                  // Logic to view individual candidate details
+                                                  // Since ProfilePage doesn't have the full CandidateDetails modal,
+                                                  // we might want to just show basic info or link back
+                                                }}
+                                                className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors"
+                                                title="View Details"
+                                              >
+                                                <FileText className="w-3.5 h-3.5" />
+                                              </button>
+                                              <button 
+                                                onClick={() => deleteCandidate(c.id)}
+                                                className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                                                title="Delete from list"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                              </button>
+                                          </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {projectCandidates.length === 0 && (
+                                    <tr>
+                                      <td colSpan={4} className="p-8 text-center text-xs text-gray-400 italic">
+                                        No candidates analyzed in this session yet.
+                                      </td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
