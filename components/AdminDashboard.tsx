@@ -157,23 +157,27 @@ const UserTable = ({ users, onSelect, showRole = false }: { users: UserStats[], 
   </div>
 );
 
-const Sparkline = ({ data, color }: { data: any[], color: string }) => (
-  <div className="h-8 w-16">
-    <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data}>
-        <Area 
-          type="monotone" 
-          dataKey="value" 
-          stroke={color} 
-          fill={color} 
-          fillOpacity={0.1} 
-          strokeWidth={2} 
-          isAnimationActive={false}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
-  </div>
-);
+const Sparkline = ({ data, color }: { data: any[], color: string }) => {
+  if (!data || data.length === 0) return <div className="h-8 w-16 bg-gray-50 rounded-lg animate-pulse" />;
+  
+  return (
+    <div className="h-8 w-16">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data}>
+          <Area 
+            type="monotone" 
+            dataKey="value" 
+            stroke={color} 
+            fill={color} 
+            fillOpacity={0.1} 
+            strokeWidth={2} 
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
 
 export const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [activeView, setActiveView] = useState<'overview' | 'jobseekers' | 'recruiters'>('overview');
@@ -186,7 +190,7 @@ export const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => 
   const [jobSeekerPage, setJobSeekerPage] = useState(1);
   const [recruiterPage, setRecruiterPage] = useState(1);
   const [profileUsagePage, setProfileUsagePage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 8;
   const [selectedUser, setSelectedUser] = useState<UserStats | null>(null);
   const [filterRange, setFilterRange] = useState<FilterRange>('all');
   const [userFilterRange, setUserFilterRange] = useState<FilterRange>('all');
@@ -197,36 +201,44 @@ export const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => 
     if (totalPages <= 1) return null;
 
     return (
-      <div className="flex items-center justify-center gap-2 p-6 border-t border-gray-100 bg-gray-50/30">
-        <button
-          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-          disabled={currentPage === 1}
-          className="p-2 rounded-xl hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-transparent hover:border-gray-200"
-        >
-          <ChevronLeft className="w-4 h-4 text-gray-600" />
-        </button>
-        <div className="flex items-center gap-1">
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-            <button
-              key={page}
-              onClick={() => onPageChange(page)}
-              className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${
-                currentPage === page
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-                  : 'text-gray-500 hover:bg-white border border-transparent hover:border-gray-200'
-              }`}
-            >
-              {page}
-            </button>
-          ))}
+      <div className="flex items-center justify-between px-6 py-4 bg-white/50 border-t border-gray-100 mt-auto">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+          Showing {Math.min(itemsPerPage, totalItems)} of {totalItems} entries
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="p-2 rounded-xl hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-gray-100 shadow-sm"
+          >
+            <ChevronLeft className="w-4 h-4 text-gray-600" />
+          </button>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const pageNum = i + 1;
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => onPageChange(pageNum)}
+                  className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${
+                    currentPage === pageNum
+                      ? 'bg-system-blue text-white shadow-lg shadow-blue-200'
+                      : 'text-gray-500 hover:bg-white border border-transparent hover:border-gray-200'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className="p-2 rounded-xl hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-gray-100 shadow-sm"
+          >
+            <ChevronRight className="w-4 h-4 text-gray-600" />
+          </button>
         </div>
-        <button
-          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
-          disabled={currentPage === totalPages}
-          className="p-2 rounded-xl hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-transparent hover:border-gray-200"
-        >
-          <ChevronRight className="w-4 h-4 text-gray-600" />
-        </button>
       </div>
     );
   };
@@ -237,27 +249,24 @@ export const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => 
   const [isDownloadingReport, setIsDownloadingReport] = useState(false);
   
   const filteredData = useMemo(() => {
-    let filteredUsers = [...users];
-    let filteredUsage = [...usageRecords];
+    try {
+      let filteredUsers = [...users];
+      let filteredUsage = [...usageRecords];
 
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    // Use a copy to avoid modifying 'now'
-    const weekCopy = new Date(now);
-    const startOfWeek = new Date(weekCopy.setDate(weekCopy.getDate() - weekCopy.getDay()));
-    startOfWeek.setHours(0, 0, 0, 0);
-    
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      const weekCopy = new Date(now);
+      const startOfWeek = new Date(weekCopy.setDate(weekCopy.getDate() - weekCopy.getDay()));
+      startOfWeek.setHours(0, 0, 0, 0);
+      
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    if (filterRange !== 'all') {
       const filterDate = (dateInput: any) => {
         if (!dateInput) return false;
-        
-        // Handle Firestore Timestamp objects or strings
         const date = dateInput instanceof Date 
           ? dateInput 
-          : (dateInput.toDate ? dateInput.toDate() : new Date(dateInput));
+          : (dateInput?.toDate ? dateInput.toDate() : new Date(dateInput));
         
         if (isNaN(date.getTime())) return false;
 
@@ -267,142 +276,125 @@ export const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => 
         if (filterRange === 'custom') {
           const start = customDateRange.start ? new Date(customDateRange.start) : new Date(0);
           const end = customDateRange.end ? new Date(customDateRange.end) : new Date();
-          // Set end to end of day for custom range
           end.setHours(23, 59, 59, 999);
           return date >= start && date <= end;
         }
         return true;
       };
 
-      filteredUsage = usageRecords.filter(u => filterDate(u.timestamp));
-      
-      // For users, we include those who joined in the period OR were active in the period
-      const activeUserIds = new Set(filteredUsage.map(u => u.userId));
-      filteredUsers = users.filter(u => 
-        filterDate(u.createdAt) || activeUserIds.has(u.id)
+      if (filterRange !== 'all') {
+        filteredUsage = usageRecords.filter(u => filterDate(u.timestamp));
+        const activeUserIds = new Set(filteredUsage.map(u => u.userId));
+        filteredUsers = users.filter(u => filterDate(u.createdAt) || activeUserIds.has(u.id));
+      }
+
+      if (usageTypeFilter !== 'all') {
+        filteredUsage = filteredUsage.filter(u => u.type === usageTypeFilter);
+      }
+
+      const sortedUsage = [...filteredUsage].sort((a, b) => 
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       );
-    }
 
-    if (usageTypeFilter !== 'all') {
-      filteredUsage = filteredUsage.filter(u => u.type === usageTypeFilter);
-    }
+      const totalResumes = filteredUsage.filter(u => u.type === 'resume').length;
+      const totalScans = filteredUsage.filter(u => u.type === 'recruiter_scan').length;
+      const totalInterviews = filteredUsage.filter(u => u.type === 'interview').length;
+      const totalTokens = filteredUsage.reduce((acc, curr) => acc + (curr.tokens || 0), 0);
+      const totalCostUSD = filteredUsage.reduce((acc, curr) => acc + (curr.costUSD || 0), 0);
+      const totalProcessingTime = filteredUsage.reduce((acc, curr) => acc + (curr.processingTime || 0), 0);
 
-    // Sort usage by timestamp descending (newest first)
-    const sortedUsage = [...filteredUsage].sort((a, b) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-
-    // Recalculate stats for filtered data
-    const totalResumes = filteredUsage.filter(u => u.type === 'resume').length;
-    const totalScans = filteredUsage.filter(u => u.type === 'recruiter_scan').length;
-    const totalInterviews = filteredUsage.filter(u => u.type === 'interview').length;
-    const totalTokens = filteredUsage.reduce((acc, curr) => acc + curr.tokens, 0);
-    const totalCostUSD = filteredUsage.reduce((acc, curr) => acc + curr.costUSD, 0);
-    const totalProcessingTime = filteredUsage.reduce((acc, curr) => acc + curr.processingTime, 0);
-
-    const currentStats = {
-      totalUsers: filteredUsers.length,
-      totalResumes: totalResumes + totalScans,
-      totalInterviews,
-      estimatedTokens: totalTokens,
-      totalCostUSD,
-      totalCostINR: totalCostUSD * USD_TO_INR,
-      avgProcessingTime: (totalResumes + totalScans + totalInterviews) > 0 ? totalProcessingTime / (totalResumes + totalScans + totalInterviews) : 0,
-      avgCostPerApp: (totalResumes + totalScans) > 0 ? totalCostUSD / (totalResumes + totalScans) : 0
-    };
-
-    // Generate sparkline data for last 7 days
-    const sparklineDays = Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return d.toLocaleDateString();
-    });
-
-    const getSparklineData = (type: string | 'all') => {
-      return sparklineDays.map(day => {
-        const count = filteredUsage.filter(u => {
-          const uDate = new Date(u.timestamp).toLocaleDateString();
-          return uDate === day && (type === 'all' || u.type === type);
-        }).length;
-        return { value: count };
-      });
-    };
-
-    const sparklines = {
-      users: getSparklineData('all'),
-      resumes: getSparklineData('resume'),
-      interviews: getSparklineData('interview'),
-      tokens: sparklineDays.map(day => ({
-        value: filteredUsage.filter(u => new Date(u.timestamp).toLocaleDateString() === day)
-          .reduce((acc, curr) => acc + curr.tokens, 0)
-      })),
-      cost: sparklineDays.map(day => ({
-        value: filteredUsage.filter(u => new Date(u.timestamp).toLocaleDateString() === day)
-          .reduce((acc, curr) => acc + curr.costUSD, 0)
-      }))
-    };
-
-    // Calculate usageByDay for charts
-    const usageByDay = sparklineDays.map(day => {
-      const dayUsage = filteredUsage.filter(u => new Date(u.timestamp).toLocaleDateString() === day);
-      return {
-        date: day.split('/')[0] + '/' + day.split('/')[1], // Short date
-        count: dayUsage.length,
-        avgTime: dayUsage.length > 0 ? dayUsage.reduce((acc, curr) => acc + curr.processingTime, 0) / dayUsage.length : 0
+      const currentStats = {
+        totalUsers: filteredUsers.length,
+        totalResumes: totalResumes + totalScans,
+        totalInterviews,
+        estimatedTokens: totalTokens,
+        totalCostUSD,
+        totalCostINR: totalCostUSD * USD_TO_INR,
+        avgProcessingTime: (totalResumes + totalScans + totalInterviews) > 0 ? totalProcessingTime / (totalResumes + totalScans + totalInterviews) : 0,
+        avgCostPerApp: (totalResumes + totalScans) > 0 ? totalCostUSD / (totalResumes + totalScans) : 0
       };
-    });
 
-    const jobSeekerUsage = sortedUsage.filter(u => {
-      const user = users.find(fu => fu.id === u.userId);
-      // Default to jobseeker if role is missing
-      return !user?.role || user?.role === 'jobseeker';
-    });
-    const jobSeekerResumes = jobSeekerUsage.filter(u => u.type === 'resume');
-    const jobSeekerCost = jobSeekerUsage.reduce((acc, curr) => acc + curr.costUSD, 0);
+      const sparklineDays = Array.from({ length: 7 }).map((_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i));
+        return d.toLocaleDateString();
+      });
 
-    const jobSeekerStats = {
-      totalUsers: filteredUsers.filter(u => !u.role || u.role === 'jobseeker').length,
-      totalResumes: jobSeekerResumes.length,
-      totalTokens: jobSeekerUsage.reduce((acc, curr) => acc + curr.tokens, 0),
-      totalCostUSD: jobSeekerCost,
-      avgCostPerResume: jobSeekerResumes.length > 0 ? jobSeekerResumes.reduce((acc, curr) => acc + curr.costUSD, 0) / jobSeekerResumes.length : 0,
-      totalCostINR: jobSeekerCost * USD_TO_INR,
-    };
+      const sparklines = {
+        users: sparklineDays.map(day => ({
+          value: filteredUsers.filter(u => u.createdAt && new Date(u.createdAt).toLocaleDateString() === day).length
+        })),
+        resumes: sparklineDays.map(day => ({
+          value: filteredUsage.filter(u => new Date(u.timestamp).toLocaleDateString() === day && (u.type === 'resume' || u.type === 'recruiter_scan')).length
+        })),
+        interviews: sparklineDays.map(day => ({
+          value: filteredUsage.filter(u => new Date(u.timestamp).toLocaleDateString() === day && u.type === 'interview').length
+        })),
+        tokens: sparklineDays.map(day => ({
+          value: filteredUsage.filter(u => new Date(u.timestamp).toLocaleDateString() === day).reduce((acc, curr) => acc + (curr.tokens || 0), 0)
+        })),
+        cost: sparklineDays.map(day => ({
+          value: filteredUsage.filter(u => new Date(u.timestamp).toLocaleDateString() === day).reduce((acc, curr) => acc + (curr.costUSD || 0), 0)
+        }))
+      };
 
-    const recruiterUsage = sortedUsage.filter(u => {
-      const user = users.find(fu => fu.id === u.userId);
-      return user?.role === 'recruiter';
-    });
-    const recruiterActivities = recruiterUsage.filter(u => u.type === 'interview' || u.type === 'recruiter_scan');
-    const recruiterCost = recruiterUsage.reduce((acc, curr) => acc + curr.costUSD, 0);
+      const usageByDay = sparklineDays.map(day => {
+        const dayUsage = filteredUsage.filter(u => new Date(u.timestamp).toLocaleDateString() === day);
+        return {
+          date: day.split('/').slice(0, 2).join('/'),
+          count: dayUsage.length,
+          avgTime: dayUsage.length > 0 ? dayUsage.reduce((acc, curr) => acc + (curr.processingTime || 0), 0) / dayUsage.length : 0
+        };
+      });
 
-    const recruiterStats = {
-      totalUsers: filteredUsers.filter(u => u.role === 'recruiter').length,
-      totalInterviews: recruiterActivities.length,
-      totalTokens: recruiterUsage.reduce((acc, curr) => acc + curr.tokens, 0),
-      totalCostUSD: recruiterCost,
-      avgCostPerInterview: recruiterActivities.length > 0 ? recruiterCost / recruiterActivities.length : 0,
-      totalCostINR: recruiterCost * USD_TO_INR,
-    };
-
-    return { 
-      filteredUsers, 
-      filteredUsage: sortedUsage, 
-      currentStats, 
-      jobSeekerStats, 
-      recruiterStats,
-      sparklines,
-      usageByDay,
-      usageByHour: Array.from({ length: 24 }).map((_, i) => ({
-        hour: `${i}:00`,
-        count: filteredUsage.filter(u => new Date(u.timestamp).getHours() === i).length
-      })),
-      roleDistribution: [
+      const roleDistribution = [
         { name: 'Job Seekers', value: filteredUsers.filter(u => !u.role || u.role === 'jobseeker').length },
         { name: 'Recruiters', value: filteredUsers.filter(u => u.role === 'recruiter').length },
         { name: 'Admins', value: filteredUsers.filter(u => u.role === 'admin').length },
-      ]
-    };
+      ].filter(r => r.value > 0);
+
+      if (roleDistribution.length === 0) {
+        roleDistribution.push({ name: 'No Data', value: 1 });
+      }
+
+      return { 
+        filteredUsers, 
+        filteredUsage: sortedUsage, 
+        currentStats, 
+        sparklines,
+        usageByDay,
+        usageByHour: Array.from({ length: 24 }).map((_, i) => ({
+          hour: `${i}:00`,
+          count: filteredUsage.filter(u => new Date(u.timestamp).getHours() === i).length
+        })),
+        roleDistribution,
+        jobSeekerStats: {
+          totalUsers: filteredUsers.filter(u => !u.role || u.role === 'jobseeker').length,
+          totalResumes: filteredUsage.filter(u => (!users.find(fu => fu.id === u.userId)?.role || users.find(fu => fu.id === u.userId)?.role === 'jobseeker') && u.type === 'resume').length,
+          totalCostUSD: filteredUsage.filter(u => (!users.find(fu => fu.id === u.userId)?.role || users.find(fu => fu.id === u.userId)?.role === 'jobseeker')).reduce((acc, curr) => acc + (curr.costUSD || 0), 0),
+          totalTokens: filteredUsage.filter(u => (!users.find(fu => fu.id === u.userId)?.role || users.find(fu => fu.id === u.userId)?.role === 'jobseeker')).reduce((acc, curr) => acc + (curr.tokens || 0), 0)
+        },
+        recruiterStats: {
+          totalUsers: filteredUsers.filter(u => u.role === 'recruiter').length,
+          totalInterviews: filteredUsage.filter(u => users.find(fu => fu.id === u.userId)?.role === 'recruiter').length,
+          totalCostUSD: filteredUsage.filter(u => users.find(fu => fu.id === u.userId)?.role === 'recruiter').reduce((acc, curr) => acc + (curr.costUSD || 0), 0),
+          totalTokens: filteredUsage.filter(u => users.find(fu => fu.id === u.userId)?.role === 'recruiter').reduce((acc, curr) => acc + (curr.tokens || 0), 0)
+        }
+      };
+    } catch (err) {
+      console.error("Error in filteredData useMemo:", err);
+      return {
+        filteredUsers: [],
+        filteredUsage: [],
+        currentStats: { totalUsers: 0, totalResumes: 0, totalInterviews: 0, estimatedTokens: 0, totalCostUSD: 0, totalCostINR: 0, avgProcessingTime: 0, avgCostPerApp: 0 },
+        sparklines: { users: [], resumes: [], interviews: [], tokens: [], cost: [] },
+        usageByDay: [],
+        usageByHour: [],
+        roleDistribution: [{ name: 'Error', value: 1 }],
+        jobSeekerStats: { totalUsers: 0, totalResumes: 0, totalCostUSD: 0, totalTokens: 0 },
+        recruiterStats: { totalUsers: 0, totalInterviews: 0, totalCostUSD: 0, totalTokens: 0 }
+      };
+    }
   }, [users, usageRecords, filterRange, customDateRange, usageTypeFilter]);
 
   const retentionCohorts = useMemo(() => {
@@ -650,49 +642,49 @@ export const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => 
     setRecruiterPage(1);
   }, [searchTerm]);
 
+  const generateAIInsights = async () => {
+    if (loading) return;
+    
+    setIsGeneratingInsights(true);
+    try {
+      const statsToUse = activeView === 'jobseekers' 
+        ? {
+            totalUsers: filteredData.jobSeekerStats.totalUsers,
+            totalResumes: filteredData.jobSeekerStats.totalResumes,
+            totalInterviews: 0,
+            totalTokens: filteredData.jobSeekerStats.totalTokens,
+            avgProcessingTime: 12,
+            totalCostUSD: filteredData.jobSeekerStats.totalCostUSD
+          }
+        : activeView === 'recruiters'
+        ? {
+            totalUsers: filteredData.recruiterStats.totalUsers,
+            totalResumes: 0,
+            totalInterviews: filteredData.recruiterStats.totalInterviews,
+            totalTokens: filteredData.recruiterStats.totalTokens,
+            avgProcessingTime: 3,
+            totalCostUSD: filteredData.recruiterStats.totalCostUSD
+          }
+        : {
+            totalUsers: filteredData.currentStats.totalUsers,
+            totalResumes: filteredData.currentStats.totalResumes,
+            totalInterviews: filteredData.currentStats.totalInterviews,
+            totalTokens: filteredData.currentStats.estimatedTokens,
+            avgProcessingTime: filteredData.currentStats.avgProcessingTime,
+            totalCostUSD: filteredData.currentStats.totalCostUSD
+          };
+
+      const insights = await getAdminInsights(statsToUse, activeView);
+      setAiInsights(insights);
+    } catch (error) {
+      console.error("Error generating AI insights:", error);
+    } finally {
+      setIsGeneratingInsights(false);
+    }
+  };
+
   useEffect(() => {
-    const generateInsights = async () => {
-      if (loading) return;
-      
-      setIsGeneratingInsights(true);
-      try {
-        const statsToUse = activeView === 'jobseekers' 
-          ? {
-              totalUsers: filteredData.jobSeekerStats.totalUsers,
-              totalResumes: filteredData.jobSeekerStats.totalResumes,
-              totalInterviews: 0,
-              totalTokens: filteredData.jobSeekerStats.totalTokens,
-              avgProcessingTime: 12,
-              totalCostUSD: filteredData.jobSeekerStats.totalCostUSD
-            }
-          : activeView === 'recruiters'
-          ? {
-              totalUsers: filteredData.recruiterStats.totalUsers,
-              totalResumes: 0,
-              totalInterviews: filteredData.recruiterStats.totalInterviews,
-              totalTokens: filteredData.recruiterStats.totalTokens,
-              avgProcessingTime: 3,
-              totalCostUSD: filteredData.recruiterStats.totalCostUSD
-            }
-          : {
-              totalUsers: filteredData.currentStats.totalUsers,
-              totalResumes: filteredData.currentStats.totalResumes,
-              totalInterviews: filteredData.currentStats.totalInterviews,
-              totalTokens: filteredData.currentStats.estimatedTokens,
-              avgProcessingTime: filteredData.currentStats.avgProcessingTime,
-              totalCostUSD: filteredData.currentStats.totalCostUSD
-            };
-
-        const insights = await getAdminInsights(statsToUse, activeView);
-        setAiInsights(insights);
-      } catch (error) {
-        console.error("Error generating AI insights:", error);
-      } finally {
-        setIsGeneratingInsights(false);
-      }
-    };
-
-    generateInsights();
+    generateAIInsights();
   }, [activeView, filteredData.currentStats, loading]);
 
   const chartData = useMemo(() => {
@@ -1062,887 +1054,481 @@ export const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => 
             </main>
           </div>
         )}
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex justify-between items-center">
+             {/* Header */}
+      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-100 sticky top-0 z-[60] safe-top">
+        <div className="max-w-7xl mx-auto px-6 sm:px-8 py-5 flex justify-between items-center">
           <div className="flex items-center gap-6">
             <button 
               onClick={onBack}
-              className="p-3 hover:bg-gray-100 rounded-2xl text-gray-500 transition-all active:scale-95"
+              className="p-3 bg-gray-50 hover:bg-gray-100 rounded-2xl text-gray-400 hover:text-gray-900 transition-all active:scale-95 border border-transparent hover:border-gray-200"
             >
               <ArrowLeftIcon className="w-5 h-5" />
             </button>
+            <div className="h-10 w-px bg-gray-100"></div>
             <div>
               <div className="flex items-center gap-3 mb-1">
-                <h1 className="text-2xl font-black text-gray-900 tracking-tight">Admin Intelligence</h1>
-                <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">
-                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                  <span className="text-[9px] font-black uppercase tracking-widest">System Operational</span>
+                <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+                  <Shield className="w-6 h-6 text-indigo-600" />
+                  Nexus Admin
+                </h1>
+                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100/50">
+                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                  <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">Live Monitoring</span>
                 </div>
               </div>
-              <p className="text-xs text-gray-500 font-medium">Platform-wide performance & strategic metrics</p>
+              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest leading-none">Intelligence Operations Dashboard</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="hidden lg:flex items-center gap-6 px-6 py-3 bg-gray-50/50 rounded-2xl border border-gray-100">
-              <div className="text-center">
-                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Uptime</div>
-                <div className="text-xs font-black text-gray-900">99.98%</div>
+          <div className="flex items-center gap-6">
+            <div className="hidden xl:flex items-center gap-8">
+              <div className="text-right">
+                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 opacity-60">System Success</div>
+                <div className="text-sm font-black text-emerald-600 flex items-center justify-end gap-1.5">
+                  <Activity className="w-3.5 h-3.5" />
+                  99.98%
+                </div>
               </div>
-              <div className="w-px h-6 bg-gray-200"></div>
-              <div className="text-center">
-                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Latency</div>
-                <div className="text-xs font-black text-gray-900">{filteredData.currentStats.avgProcessingTime.toFixed(1)}s</div>
+              <div className="w-px h-8 bg-gray-100"></div>
+              <div className="text-right">
+                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 opacity-60">Avg Latency</div>
+                <div className="text-sm font-black text-indigo-600 flex items-center justify-end gap-1.5">
+                  <Zap className="w-3.5 h-3.5" />
+                  {filteredData.currentStats.avgProcessingTime.toFixed(1)}s
+                </div>
               </div>
             </div>
             <button
               onClick={fetchAllData}
-              className="p-3 bg-white hover:bg-gray-50 rounded-2xl text-gray-500 transition-all border border-gray-100 shadow-sm active:rotate-180 duration-500"
-              title="Refresh Data"
+              className="p-3.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-2xl transition-all border border-indigo-100/50 shadow-sm active:scale-95 group"
+              title="Sync Platform Data"
             >
-              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 transition-transform duration-700 ${loading ? 'animate-spin' : 'group-hover:rotate-180'}`} />
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        {/* View Toggle */}
-        <div className="flex items-center justify-center mb-8">
-          <div className="bg-white p-1.5 rounded-2xl shadow-apple-card border border-white/60 flex gap-1">
+      <main className="max-w-7xl mx-auto px-6 sm:px-8 py-10">
+        {/* Core KPIs: Intelligence & Economy */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
+          {/* Main Visual Metric */}
+          <div className="lg:col-span-8 bg-white p-10 rounded-[3rem] shadow-apple-card border border-white/60 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-10 transition-opacity">
+              <TrendingUp className="w-48 h-48 -rotate-12" />
+            </div>
+            <div className="relative z-10">
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+                <div>
+                  <h2 className="text-4xl font-black text-gray-900 tracking-tight mb-4 leading-tight">
+                    Platform <br/>Efficiency
+                  </h2>
+                  <div className="flex flex-wrap gap-10">
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 scale-90 origin-left">Total Token Consumption</div>
+                      <div className="text-4xl font-black text-indigo-600 tracking-tighter">
+                        {(filteredData.currentStats.estimatedTokens / 1000).toFixed(1)}<span className="text-xl ml-0.5">k</span>
+                      </div>
+                      <div className="mt-2 text-[10px] font-bold text-gray-400 flex items-center gap-1">
+                        <Cpu className="w-3 h-3" />
+                        AI compute units
+                      </div>
+                    </div>
+                    <div className="w-px h-16 bg-gray-100 hidden md:block"></div>
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-2 scale-90 origin-left text-amber-600">Total Spend (Local)</div>
+                      <div className="text-4xl font-black text-amber-500 tracking-tighter">
+                        ₹{filteredData.currentStats.totalCostINR.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </div>
+                      <div className="mt-2 text-[10px] font-bold text-gray-400 flex items-center gap-1">
+                        <Globe className="w-3 h-3" />
+                        INR conversion applied
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex-1 w-full max-w-[320px] h-32 md:h-40">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={filteredData.usageByDay}>
+                      <defs>
+                        <linearGradient id="mainKpiGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.15}/>
+                          <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <Area type="monotone" dataKey="count" stroke="#4f46e5" strokeWidth={4} fill="url(#mainKpiGradient)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* User Distribution Card */}
+          <div className="lg:col-span-4 bg-indigo-600 p-10 rounded-[3rem] shadow-2xl shadow-indigo-200 text-white flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
+            <div className="relative z-10">
+              <div className="flex items-center justify-between mb-8">
+                <Users className="w-8 h-8 text-white/40" />
+                <div className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-black uppercase tracking-widest">+12% Growth</div>
+              </div>
+              <div className="text-4xl font-black tracking-tight mb-2">{filteredData.currentStats.totalUsers}</div>
+              <div className="text-xs font-bold text-white/60 uppercase tracking-widest mb-6">Total Active Entities</div>
+              
+              <div className="space-y-4">
+                {filteredData.roleDistribution.map((role, i) => (
+                  <div key={role.name}>
+                    <div className="flex justify-between text-[10px] font-bold uppercase mb-2">
+                      <span className="opacity-70">{role.name}</span>
+                      <span>{Math.round((role.value / (filteredData.currentStats.totalUsers || 1)) * 100)}%</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-white rounded-full transition-all duration-1000" 
+                        style={{ width: `${(role.value / (filteredData.currentStats.totalUsers || 1)) * 100}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* View Selection Strategy */}
+        <div className="flex items-center justify-center mb-12">
+          <div className="bg-white p-2 rounded-[2rem] shadow-apple-card border border-white/60 flex gap-2">
             {(['overview', 'jobseekers', 'recruiters'] as const).map((view) => (
               <button
                 key={view}
                 onClick={() => setActiveView(view)}
-                className={`px-8 py-2.5 rounded-xl text-sm font-bold capitalize transition-all duration-300 ${
+                className={`px-10 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-500 ${
                   activeView === view 
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105' 
-                    : 'text-gray-500 hover:bg-gray-50 hover:text-indigo-600'
+                    ? 'bg-gray-900 text-white shadow-xl scale-105' 
+                    : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'
                 }`}
               >
-                {view === 'jobseekers' ? 'Job Seekers' : view === 'recruiters' ? 'Recruiters' : 'Overview'}
+                {view === 'jobseekers' ? 'Candidate Market' : view === 'recruiters' ? 'Recruiter Hub' : 'System Overview'}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-8 bg-white p-4 rounded-3xl shadow-apple-card border border-white/60">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-400" />
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Filters</span>
+        {/* Dynamic Contextual Filters */}
+        <div className="flex flex-wrap items-center justify-between gap-6 mb-12 bg-white/60 backdrop-blur-md p-6 rounded-[2.5rem] border border-white shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="p-2 bg-gray-50 rounded-xl">
+              <Filter className="w-4 h-4 text-gray-400" />
+            </div>
+            <div>
+              <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Time Horizon</div>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {(['all', 'today', 'week', 'month', 'custom'] as FilterRange[]).map((range) => (
               <button
                 key={range}
                 onClick={() => setFilterRange(range)}
-                className={`px-4 py-1.5 rounded-xl text-xs font-bold capitalize transition-all ${
+                className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                   filterRange === range 
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' 
-                    : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                    ? 'bg-white text-indigo-600 shadow-md border border-indigo-100 scale-105' 
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-white/50'
                 }`}
               >
                 {range}
               </button>
             ))}
-            {filterRange === 'custom' && (
-              <div className="flex items-center gap-2 ml-2 animate-in fade-in slide-in-from-left-2">
-                <input 
-                  type="date" 
-                  value={customDateRange.start}
-                  onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
-                  className="bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-[10px] outline-none focus:ring-1 focus:ring-indigo-500"
-                />
-                <span className="text-gray-400 text-[10px]">to</span>
-                <input 
-                  type="date" 
-                  value={customDateRange.end}
-                  onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
-                  className="bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-[10px] outline-none focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Strategic KPI Summary (Overview Only) */}
         {activeView === 'overview' && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
-            <div className="md:col-span-3 bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 flex flex-col md:flex-row items-center gap-8">
-              <div className="flex-1">
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Strategic Performance</h2>
-                <p className="text-gray-500 text-sm mb-6">Real-time analysis of platform efficiency and growth trajectories.</p>
-                <div className="grid grid-cols-3 gap-8">
-                  <div>
-                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Conversion</div>
-                    <div className="text-xl font-bold text-indigo-600">68.4%</div>
-                    <div className="text-[10px] text-green-500 font-medium">+4.2% vs last month</div>
+          <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
+            {/* KPI Grid v2 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
+              <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 group hover:shadow-apple-hover transition-all">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="p-3 bg-indigo-50 rounded-2xl group-hover:scale-110 transition-transform">
+                    <FileText className="w-6 h-6 text-indigo-600" />
                   </div>
-                  <div>
-                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Retention</div>
-                    <div className="text-xl font-bold text-purple-600">82.1%</div>
-                    <div className="text-[10px] text-green-500 font-medium">+1.8% vs last month</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">LTV (Est)</div>
-                    <div className="text-xl font-bold text-emerald-600">$42.50</div>
-                    <div className="text-[10px] text-green-500 font-medium">+12% vs last month</div>
-                  </div>
+                  <Sparkline data={filteredData.sparklines.resumes} color="#4f46e5" />
+                </div>
+                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 opacity-60">Resumes Analyzed</div>
+                <div className="text-3xl font-black text-gray-900 tracking-tight">{filteredData.currentStats.totalResumes}</div>
+                <div className="mt-3 flex items-center gap-2">
+                  <div className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-600 font-black rounded-lg uppercase tracking-tighter tracking-widest">Steady</div>
                 </div>
               </div>
-              <div className="w-full md:w-48 h-32">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={filteredData.usageByDay}>
-                    <defs>
-                      <linearGradient id="colorUsage" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <Area type="monotone" dataKey="count" stroke="#4f46e5" fillOpacity={1} fill="url(#colorUsage)" strokeWidth={3} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            <div className="bg-indigo-600 p-8 rounded-[2.5rem] shadow-xl text-white flex flex-col justify-between">
-              <div>
-                <div className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-1">Monthly Target</div>
-                <div className="text-3xl font-bold mb-2">92%</div>
-                <div className="w-full bg-white/20 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-white h-full w-[92%]"></div>
+
+              <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 group hover:shadow-apple-hover transition-all">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="p-3 bg-purple-50 rounded-2xl group-hover:scale-110 transition-transform">
+                    <MessageSquare className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <Sparkline data={filteredData.sparklines.interviews} color="#9333ea" />
+                </div>
+                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 opacity-60">Interviews Held</div>
+                <div className="text-3xl font-black text-gray-900 tracking-tight">{filteredData.currentStats.totalInterviews}</div>
+                <div className="mt-3 flex items-center gap-2">
+                  <div className="text-[10px] px-2 py-0.5 bg-purple-50 text-purple-600 font-black rounded-lg uppercase tracking-tighter tracking-widest">Active</div>
                 </div>
               </div>
-              <p className="text-xs text-white/80 mt-4 leading-relaxed">
-                You are currently <span className="font-bold">8% ahead</span> of the projected growth target for this quarter.
-              </p>
+
+              <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 group hover:shadow-apple-hover transition-all">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="p-3 bg-orange-50 rounded-2xl group-hover:scale-110 transition-transform">
+                    <Zap className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <Sparkline data={filteredData.sparklines.tokens} color="#ea580c" />
+                </div>
+                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 opacity-60">Cost / Scan</div>
+                <div className="text-3xl font-black text-gray-900 tracking-tight">${filteredData.currentStats.avgCostPerApp.toFixed(3)}</div>
+                <div className="mt-3 flex items-center gap-2 text-xs font-bold text-gray-400">
+                  <Activity className="w-3.5 h-3.5" /> Unit Economics
+                </div>
+              </div>
+
+              <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 group hover:shadow-apple-hover transition-all">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="p-3 bg-emerald-50 rounded-2xl group-hover:scale-110 transition-transform">
+                    <DollarSign className="w-6 h-6 text-emerald-600" />
+                  </div>
+                  <Sparkline data={filteredData.sparklines.cost} color="#059669" />
+                </div>
+                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 opacity-60">Platform Spend</div>
+                <div className="text-3xl font-black text-emerald-600 tracking-tight">${filteredData.currentStats.totalCostUSD.toFixed(1)}</div>
+                <div className="mt-3 flex items-center gap-2 text-xs font-bold text-gray-400">
+                  <Globe className="w-3.5 h-3.5" /> USD Global
+                </div>
+              </div>
             </div>
           </div>
         )}
-        {activeView === 'overview' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-10 animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60 hover:shadow-apple-hover transition-all">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-blue-50 rounded-xl">
-                  <Users className="w-5 h-5 text-blue-600" />
+
+        {/* Core Ecosystem Management */}
+        {(activeView === 'jobseekers' || activeView === 'recruiters') && (
+          <div className="space-y-12 mb-12 animate-in fade-in slide-in-from-bottom-6 duration-700">
+            {/* Contextual Stats Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+              <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60">
+                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 opacity-60">
+                  Total {activeView === 'jobseekers' ? 'Candidates' : 'Recruiters'}
                 </div>
-                <Sparkline data={filteredData.sparklines.users} color="#2563eb" />
+                <div className="text-3xl font-black text-gray-900 tracking-tight">
+                  {activeView === 'jobseekers' ? filteredData.jobSeekerStats.totalUsers : filteredData.recruiterStats.totalUsers}
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs font-bold text-indigo-500">
+                  <Users className="w-3.5 h-3.5" /> Database Size
+                </div>
               </div>
-              <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Total Users</div>
-              <div className="text-2xl font-bold text-gray-900">{filteredData.currentStats.totalUsers}</div>
-              <div className="mt-2 text-[10px] text-green-500 font-medium flex items-center gap-1">
-                <TrendingUp className="w-3 h-3" />
-                Active in period
+              <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60">
+                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 opacity-60">
+                  {activeView === 'jobseekers' ? 'AI Resumes' : 'Platform Activity'}
+                </div>
+                <div className="text-3xl font-black text-gray-900 tracking-tight">
+                  {activeView === 'jobseekers' ? filteredData.jobSeekerStats.totalResumes : filteredData.recruiterStats.totalInterviews}
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs font-bold text-emerald-500">
+                  <Activity className="w-3.5 h-3.5" /> Growth Vector
+                </div>
+              </div>
+              <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60">
+                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 opacity-60">Tokens Consumed</div>
+                <div className="text-3xl font-black text-gray-900 tracking-tight">
+                  {(((activeView === 'jobseekers' ? filteredData.jobSeekerStats.totalTokens : filteredData.recruiterStats.totalTokens) || 0) / 1000).toFixed(1)}k
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs font-bold text-orange-500">
+                  <Zap className="w-3.5 h-3.5" /> Compute Load
+                </div>
+              </div>
+              <div className="bg-amber-50 p-8 rounded-[2.5rem] shadow-sm border border-amber-100/50">
+                <div className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Regional Spend</div>
+                <div className="text-3xl font-black text-amber-600 tracking-tight">
+                  ₹{((activeView === 'jobseekers' ? filteredData.jobSeekerStats.totalCostUSD : filteredData.recruiterStats.totalCostUSD) * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs font-bold text-amber-500/60">
+                  <Globe className="w-3.5 h-3.5" /> Currency: INR
+                </div>
               </div>
             </div>
             
-            <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60 hover:shadow-apple-hover transition-all">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-indigo-50 rounded-xl">
-                  <FileText className="w-5 h-5 text-indigo-600" />
-                </div>
-                <Sparkline data={filteredData.sparklines.resumes} color="#4f46e5" />
-              </div>
-              <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Resumes</div>
-              <div className="text-2xl font-bold text-gray-900">{filteredData.currentStats.totalResumes}</div>
-              <div className="mt-2 text-[10px] text-blue-500 font-medium flex items-center gap-1">
-                <Activity className="w-3 h-3" />
-                Analyzed
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60 hover:shadow-apple-hover transition-all">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-purple-50 rounded-xl">
-                  <MessageSquare className="w-5 h-5 text-purple-600" />
-                </div>
-                <Sparkline data={filteredData.sparklines.interviews} color="#9333ea" />
-              </div>
-              <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Interviews</div>
-              <div className="text-2xl font-bold text-gray-900">{filteredData.currentStats.totalInterviews}</div>
-              <div className="mt-2 text-[10px] text-purple-500 font-medium flex items-center gap-1">
-                <TrendingUp className="w-3 h-3" />
-                Engagement
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60 hover:shadow-apple-hover transition-all">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-orange-50 rounded-xl">
-                  <Cpu className="w-5 h-5 text-orange-600" />
-                </div>
-                <Sparkline data={filteredData.sparklines.tokens} color="#ea580c" />
-              </div>
-              <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Tokens</div>
-              <div className="text-2xl font-bold text-gray-900">{(filteredData.currentStats.estimatedTokens / 1000).toFixed(1)}k</div>
-              <div className="mt-2 text-[10px] text-orange-500 font-medium flex items-center gap-1">
-                <Zap className="w-3 h-3" />
-                Usage
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60 hover:shadow-apple-hover transition-all">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-emerald-50 rounded-xl">
-                  <DollarSign className="w-5 h-5 text-emerald-600" />
-                </div>
-                <Sparkline data={filteredData.sparklines.cost} color="#059669" />
-              </div>
-              <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Cost (USD)</div>
-              <div className="text-2xl font-bold text-emerald-600">${filteredData.currentStats.totalCostUSD.toFixed(2)}</div>
-              <div className="mt-2 text-[10px] text-emerald-500 font-medium flex items-center gap-1">
-                <Activity className="w-3 h-3" />
-                Total spend
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60 hover:shadow-apple-hover transition-all">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-amber-50 rounded-xl">
-                  <span className="text-amber-600 font-black text-lg">₹</span>
-                </div>
-                <Sparkline data={filteredData.sparklines.cost} color="#d97706" />
-              </div>
-              <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Cost (INR)</div>
-              <div className="text-2xl font-bold text-amber-600">₹{filteredData.currentStats.totalCostINR.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-              <div className="mt-2 text-[10px] text-amber-500 font-medium flex items-center gap-1">
-                <Activity className="w-3 h-3" />
-                Local currency
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeView === 'jobseekers' && (
-          <div className="space-y-8 mb-10 animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60">
-                <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Total Job Seekers</div>
-                <div className="text-2xl font-bold text-gray-900">{filteredData.jobSeekerStats.totalUsers}</div>
-              </div>
-              <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60">
-                <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Resumes Analyzed</div>
-                <div className="text-2xl font-bold text-gray-900">{filteredData.jobSeekerStats.totalResumes}</div>
-              </div>
-              <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60">
-                <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Total Cost (INR)</div>
-                <div className="text-2xl font-bold text-amber-600">₹{filteredData.jobSeekerStats.totalCostINR.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-              </div>
-              <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60">
-                <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Avg Cost / User</div>
-                <div className="text-2xl font-bold text-emerald-600">₹{(filteredData.jobSeekerStats.totalCostINR / (filteredData.jobSeekerStats.totalUsers || 1)).toFixed(2)}</div>
-              </div>
-            </div>
-            
-            <div className="bg-white rounded-[2rem] shadow-apple-card border border-white/60 overflow-hidden">
-              <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                  <h3 className="font-bold text-gray-900">Job Seeker Management</h3>
-                  <button
-                    onClick={fetchAllData}
-                    className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 transition-colors"
-                    title="Refresh Data"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input 
-                    type="text"
-                    placeholder="Search candidates..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                  />
-                </div>
-              </div>
-              <UserTable 
-                users={finalFilteredUsers.filter(u => u.role === 'jobseeker').slice((jobSeekerPage - 1) * itemsPerPage, jobSeekerPage * itemsPerPage)} 
-                onSelect={setSelectedUser}
-                showRole={true}
-              />
-              <Pagination 
-                currentPage={jobSeekerPage} 
-                totalItems={finalFilteredUsers.filter(u => u.role === 'jobseeker').length} 
-                onPageChange={setJobSeekerPage} 
-              />
-            </div>
-          </div>
-        )}
-
-        {activeView === 'recruiters' && (
-          <div className="space-y-8 mb-10 animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60">
-                <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Total Recruiters</div>
-                <div className="text-2xl font-bold text-gray-900">{filteredData.recruiterStats.totalUsers}</div>
-              </div>
-              <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60">
-                <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Scans & Interviews</div>
-                <div className="text-2xl font-bold text-gray-900">{filteredData.recruiterStats.totalInterviews}</div>
-              </div>
-              <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60">
-                <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Total Cost (INR)</div>
-                <div className="text-2xl font-bold text-amber-600">₹{filteredData.recruiterStats.totalCostINR.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-              </div>
-              <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60">
-                <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Avg Cost / User</div>
-                <div className="text-2xl font-bold text-emerald-600">₹{(filteredData.recruiterStats.totalCostINR / (filteredData.recruiterStats.totalUsers || 1)).toFixed(2)}</div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-[2rem] shadow-apple-card border border-white/60 overflow-hidden">
-              <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                  <h3 className="font-bold text-gray-900">Recruiter Management</h3>
-                  <button
-                    onClick={fetchAllData}
-                    className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 transition-colors"
-                    title="Refresh Data"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input 
-                    type="text"
-                    placeholder="Search recruiters..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                  />
-                </div>
-              </div>
-              <UserTable 
-                users={finalFilteredUsers.filter(u => u.role === 'recruiter').slice((recruiterPage - 1) * itemsPerPage, recruiterPage * itemsPerPage)} 
-                onSelect={setSelectedUser} 
-              />
-              <Pagination 
-                currentPage={recruiterPage} 
-                totalItems={finalFilteredUsers.filter(u => u.role === 'recruiter').length} 
-                onPageChange={setRecruiterPage} 
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Cost & Performance Widgets */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-6 rounded-[2rem] shadow-apple-card text-white">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-white/20 rounded-xl">
-                <DollarSign className="w-5 h-5 text-white" />
-              </div>
-              <Globe className="w-4 h-4 text-white/60" />
-            </div>
-            <div className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1">
-              {activeView === 'overview' ? 'Total Cost (USD)' : activeView === 'jobseekers' ? 'Resume Cost (USD)' : 'Interview Cost (USD)'}
-            </div>
-            <div className="text-3xl font-bold">
-              ${(activeView === 'overview' ? filteredData.currentStats.totalCostUSD : activeView === 'jobseekers' ? filteredData.jobSeekerStats.totalCostUSD : filteredData.recruiterStats.totalCostUSD).toFixed(2)}
-            </div>
-            <div className="mt-2 text-xs text-white/80 font-medium">Platform expenses</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-6 rounded-[2rem] shadow-apple-card text-white">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-white/20 rounded-xl">
-                <span className="text-lg font-bold">₹</span>
-              </div>
-              <TrendingUp className="w-4 h-4 text-white/60" />
-            </div>
-            <div className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1">
-              {activeView === 'overview' ? 'Total Cost (INR)' : activeView === 'jobseekers' ? 'Resume Cost (INR)' : 'Interview Cost (INR)'}
-            </div>
-            <div className="text-3xl font-bold">
-              ₹{(activeView === 'overview' ? filteredData.currentStats.totalCostINR : activeView === 'jobseekers' ? filteredData.jobSeekerStats.totalCostINR : filteredData.recruiterStats.totalCostINR).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </div>
-            <div className="mt-2 text-xs text-white/80 font-medium">Local currency</div>
-          </div>
-
-          <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-rose-50 rounded-xl">
-                <Clock className="w-5 h-5 text-rose-600" />
-              </div>
-              <Activity className="w-4 h-4 text-rose-400" />
-            </div>
-            <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Avg Result Time</div>
-            <div className="text-3xl font-bold text-gray-900">
-              {activeView === 'jobseekers' ? '12.0s' : activeView === 'recruiters' ? '3.0s' : filteredData.currentStats.avgProcessingTime.toFixed(1) + 's'}
-            </div>
-            <div className="mt-2 text-xs text-rose-500 font-medium">Processing latency</div>
-          </div>
-
-          <div className="bg-white p-6 rounded-[2rem] shadow-apple-card border border-white/60">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-cyan-50 rounded-xl">
-                <Zap className="w-5 h-5 text-cyan-600" />
-              </div>
-              <TrendingDown className="w-4 h-4 text-cyan-400" />
-            </div>
-            <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">
-              {activeView === 'jobseekers' ? 'Cost / Resume' : activeView === 'recruiters' ? 'Cost / Interview' : 'Cost / Application'}
-            </div>
-            <div className="text-3xl font-bold text-gray-900">
-              ${(activeView === 'jobseekers' ? filteredData.jobSeekerStats.avgCostPerResume : activeView === 'recruiters' ? filteredData.recruiterStats.avgCostPerInterview : filteredData.currentStats.avgCostPerApp).toFixed(3)}
-            </div>
-            <div className="mt-2 text-xs text-cyan-500 font-medium">Unit economy</div>
-          </div>
-        </div>
-
-        {/* Cost Analysis Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-green-500" />
-              AI Cost Strategy & Savings
-            </h3>
-            <div className="space-y-8">
-              <div className="flex justify-between items-end">
+            {/* Primary Table Surface */}
+            <div className="bg-white rounded-[3.5rem] shadow-apple-card border border-white/60 overflow-hidden group">
+              <div className="p-10 border-b border-gray-50 flex flex-col md:flex-row justify-between items-center gap-8">
                 <div>
-                  <p className="text-4xl font-black text-gray-900">${costAnalysis.totalCost.toFixed(4)}</p>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Platform Cost (Est.)</p>
+                  <h3 className="text-2xl font-black text-gray-900 tracking-tight mb-1">
+                    {activeView === 'jobseekers' ? 'Candidate Market' : 'Recruitment Network'}
+                  </h3>
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Master index & performance tracking</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-lg font-bold text-green-600">+${costAnalysis.savings.toFixed(2)}</p>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Saved vs. Pro-Only Model</p>
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                  <div className="relative flex-1">
+                    <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" />
+                    <input 
+                      type="text"
+                      placeholder={`Search ${activeView === 'jobseekers' ? 'candidates' : 'agencies'}...`}
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full md:w-[320px] pl-12 pr-6 py-4 bg-gray-50/50 border border-gray-100 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all font-medium"
+                    />
+                  </div>
                 </div>
               </div>
               
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-[10px] font-bold uppercase mb-1.5">
-                    <span className="text-gray-500">Gemini 3.1 Pro (Heavy Analysis)</span>
-                    <span className="text-gray-900">${costAnalysis.proCost.toFixed(4)}</span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-indigo-600 rounded-full transition-all duration-1000" 
-                      style={{ width: `${(costAnalysis.proCost / (costAnalysis.totalCost || 1)) * 100}%` }}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-[10px] font-bold uppercase mb-1.5">
-                    <span className="text-gray-500">Gemini 3 Flash (Fast Scans)</span>
-                    <span className="text-gray-900">${costAnalysis.flashCost.toFixed(4)}</span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-blue-400 rounded-full transition-all duration-1000" 
-                      style={{ width: `${(costAnalysis.flashCost / (costAnalysis.totalCost || 1)) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-5 bg-green-50 rounded-2xl border border-green-100 flex items-start gap-4">
-                <div className="p-2 bg-green-100 rounded-xl">
-                  <Zap className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-green-900 mb-1">Hybrid Strategy ROI</p>
-                  <p className="text-[10px] text-green-700 leading-relaxed">
-                    By routing simple scans to Flash and complex analysis to Pro, you are achieving <span className="font-bold">92% cost efficiency</span> while maintaining 100% output quality for critical tasks.
-                  </p>
-                </div>
+              <UserTable 
+                users={finalFilteredUsers.filter(u => u.role === (activeView === 'jobseekers' ? 'jobseeker' : 'recruiter')).slice(((activeView === 'jobseekers' ? jobSeekerPage : recruiterPage) - 1) * itemsPerPage, (activeView === 'jobseekers' ? jobSeekerPage : recruiterPage) * itemsPerPage)} 
+                onSelect={setSelectedUser}
+                showRole={false}
+              />
+              
+              <div className="p-6 bg-gray-50/30 border-t border-gray-50">
+                <Pagination 
+                  currentPage={activeView === 'jobseekers' ? jobSeekerPage : recruiterPage} 
+                  totalItems={finalFilteredUsers.filter(u => u.role === (activeView === 'jobseekers' ? 'jobseeker' : 'recruiter')).length} 
+                  onPageChange={activeView === 'jobseekers' ? setJobSeekerPage : setRecruiterPage} 
+                />
               </div>
             </div>
           </div>
+        )}
 
-          {/* Retention Cohorts */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
-            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <Users className="w-5 h-5 text-indigo-600" />
-              Retention Cohorts (Weekly)
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[10px] border-collapse">
-                <thead>
-                  <tr>
-                    <th className="p-2 text-left text-gray-400 font-bold uppercase">Cohort</th>
-                    <th className="p-2 text-center text-gray-400 font-bold uppercase">Size</th>
-                    {[0, 1, 2, 3, 4].map(w => (
-                      <th key={w} className="p-2 text-center text-gray-400 font-bold uppercase">W{w}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {retentionCohorts.map((cohort, i) => (
-                    <tr key={i} className="border-t border-gray-50">
-                      <td className="p-2 font-bold text-gray-600">{cohort.week}</td>
-                      <td className="p-2 text-center font-bold text-gray-900">{cohort.size}</td>
-                      {cohort.retention.map((rate, j) => (
-                        <td 
-                          key={j} 
-                          className="p-2 text-center font-bold"
-                          style={{ 
-                            backgroundColor: `rgba(79, 70, 229, ${rate / 100})`,
-                            color: rate > 50 ? 'white' : '#4b5563'
-                          }}
-                        >
-                          {rate}%
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* Intelligence Layer: AI Strategic Insights & Platform Health */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+          <div className="lg:col-span-2 bg-white p-10 rounded-[3rem] shadow-apple-card border border-white/60 relative group overflow-hidden">
+            <div className="absolute top-0 right-0 p-8 opacity-5">
+              <BrainCircuit className="w-32 h-32 text-indigo-600" />
             </div>
-          </div>
-        </div>
-
-        {/* AI Insights Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-10">
-          <div className="lg:col-span-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-gradient-to-r from-indigo-600 to-violet-700 p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden h-full">
-              <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl animate-pulse"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center">
-                    <BrainCircuit className="w-6 h-6 text-white" />
+            <div className="relative z-10">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-indigo-50 rounded-2xl">
+                    <BrainCircuit className="w-6 h-6 text-indigo-600" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold">AI {activeView === 'overview' ? 'Strategic' : activeView === 'jobseekers' ? 'Job Seeker' : 'Recruiter'} Insights</h3>
-                    <p className="text-white/60 text-xs">Intelligent suggestions for {activeView === 'overview' ? 'platform' : activeView === 'jobseekers' ? 'job seeker' : 'recruiter'} optimization</p>
+                    <h3 className="text-xl font-black text-gray-900 tracking-tight">AI Strategic Insights</h3>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Real-time platform analysis • {activeView} Mode</p>
                   </div>
                 </div>
-                
+                <button 
+                  onClick={() => generateAIInsights()} 
+                  disabled={isGeneratingInsights}
+                  className="p-3 bg-indigo-50 hover:bg-indigo-100 rounded-xl text-indigo-600 transition-all border border-indigo-100"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isGeneratingInsights ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              
+              <div className="prose prose-sm max-w-none prose-p:text-gray-500 prose-headings:text-gray-900 prose-strong:text-indigo-600 prose-headings:font-black min-h-[160px]">
                 {isGeneratingInsights ? (
-                  <div className="flex items-center gap-3 py-4">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    <span className="text-sm font-medium text-white/80">Analyzing metrics and generating strategic insights...</span>
+                  <div className="space-y-4">
+                    <div className="h-4 bg-gray-50 rounded-full animate-pulse w-3/4" />
+                    <div className="h-4 bg-gray-50 rounded-full animate-pulse w-1/2" />
+                    <div className="h-4 bg-gray-50 rounded-full animate-pulse w-5/6" />
+                  </div>
+                ) : aiInsights ? (
+                  <div className="markdown-body">
+                    <Markdown>{aiInsights}</Markdown>
                   </div>
                 ) : (
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <Markdown>{aiInsights}</Markdown>
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <Zap className="w-8 h-8 text-indigo-200 mb-3 animate-pulse" />
+                    <p className="text-sm text-gray-400 font-medium">Initialize intelligence scan for {activeView} insights.</p>
                   </div>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Recent Activity Feed */}
-          <div className="lg:col-span-4 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 h-full flex flex-col">
-              <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                <Activity className="w-5 h-5 text-indigo-600" />
-                Recent Platform Activity
-              </h3>
-              <div className="space-y-4 overflow-y-auto flex-1 pr-2 max-h-[400px]">
-                {filteredData.filteredUsage.slice(0, 8).map((record) => (
-                  <div key={record.id} className="flex items-start gap-3 p-3 rounded-2xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      record.type === 'resume' ? 'bg-blue-50 text-blue-600' : 
-                      record.type === 'recruiter_scan' ? 'bg-emerald-50 text-emerald-600' :
-                      'bg-purple-50 text-purple-600'
-                    }`}>
-                      {record.type === 'resume' ? <FileText className="w-4 h-4" /> : 
-                       record.type === 'recruiter_scan' ? <Search className="w-4 h-4" /> :
-                       <MessageSquare className="w-4 h-4" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-gray-900 truncate">{record.userName}</p>
-                      <p className="text-[10px] text-gray-500">
-                        {record.type.replace('_', ' ')} processed
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] font-bold text-gray-400">{new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                      <p className="text-[10px] font-medium text-emerald-600">${record.costUSD.toFixed(4)}</p>
+          <div className="bg-gray-900 p-10 rounded-[3rem] shadow-2xl text-white relative overflow-hidden flex flex-col justify-between group">
+            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-700">
+              <Activity className="w-24 h-24" />
+            </div>
+            <div className="relative z-10">
+              <h3 className="text-lg font-black tracking-tight mb-8">Infrastructure Health</h3>
+              <div className="space-y-8">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">Compute Latency</div>
+                    <div className="text-2xl font-black text-indigo-400">{(filteredData.currentStats.avgProcessingTime * 1000).toFixed(0)}<span className="text-xs ml-0.5">ms</span></div>
+                  </div>
+                  <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/5">
+                    <Zap className="w-5 h-5 text-indigo-400" />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">Cost Efficiency</div>
+                    <div className="text-2xl font-black text-emerald-400">92.4%</div>
+                  </div>
+                  <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/5">
+                    <TrendingUp className="w-5 h-5 text-emerald-400" />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">Platform Spend</div>
+                    <div className="text-2xl font-black text-amber-500">
+                      ₹{(filteredData.currentStats.totalCostINR).toLocaleString()}
                     </div>
                   </div>
-                ))}
+                  <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/5">
+                    <DollarSign className="w-5 h-5 text-amber-500" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-12 p-4 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm">
+              <p className="text-[10px] font-bold text-white/60 leading-relaxed">
+                System is performing in the <span className="text-indigo-400">Upper 99th Percentile</span>.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Primary Data Surface: Master Index */}
+        <div className="bg-white rounded-[3.5rem] shadow-apple-card border border-white/60 overflow-hidden group mb-12">
+          <div className="p-10 border-b border-gray-50 flex flex-col md:flex-row justify-between items-center gap-8">
+            <div className="flex items-center gap-5">
+              <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100">
+                <Shield className="w-7 h-7" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-black text-gray-900 tracking-tight mb-1">Master User Index</h3>
+                <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Global platform directory • {activeView} filter active</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 w-full md:w-auto">
+              <div className="relative group flex-1 md:w-[320px]">
+                <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-indigo-600 transition-colors" />
+                <input 
+                  type="text"
+                  placeholder="Master search (Email, Role, Status)..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-12 pr-6 py-4 bg-gray-50/50 border border-gray-100 rounded-[1.25rem] text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all font-medium placeholder:text-gray-300"
+                />
               </div>
               <button 
-                onClick={() => setActiveView('jobseekers')}
-                className="mt-6 w-full py-3 bg-gray-50 text-gray-500 text-xs font-bold rounded-xl hover:bg-gray-100 transition-all"
+                onClick={fetchAllData}
+                className="p-4 bg-gray-50 hover:bg-gray-100 rounded-2xl text-gray-400 transition-all border border-transparent shadow-sm"
               >
-                View All Activity
+                <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
               </button>
             </div>
           </div>
-        </div>
-
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-          {/* Usage Trend */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 animate-in fade-in slide-in-from-left-4 duration-500">
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">Usage Trend</h3>
-                <p className="text-xs text-gray-500">Daily activity volume</p>
-              </div>
-              <div className="p-2 bg-indigo-50 rounded-xl">
-                <TrendingUp className="w-5 h-5 text-indigo-600" />
-              </div>
-            </div>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={filteredData.usageByDay}>
-                  <defs>
-                    <linearGradient id="colorUsageMain" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
-                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                  />
-                  <Area type="monotone" dataKey="count" stroke="#4f46e5" strokeWidth={4} fillOpacity={1} fill="url(#colorUsageMain)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Model Performance */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 animate-in fade-in slide-in-from-right-4 duration-500">
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">Model Latency</h3>
-                <p className="text-xs text-gray-500">Avg processing time (seconds)</p>
-              </div>
-              <div className="p-2 bg-emerald-50 rounded-xl">
-                <Zap className="w-5 h-5 text-emerald-600" />
-              </div>
-            </div>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={filteredData.usageByDay}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
-                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
-                  <Tooltip contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
-                  <Line type="monotone" dataKey="avgTime" stroke="#10b981" strokeWidth={4} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-          {/* Heatmap */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 animate-in fade-in slide-in-from-left-4 duration-500 delay-100">
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">Activity Heatmap</h3>
-                <p className="text-xs text-gray-500">Hourly distribution across the week</p>
-              </div>
-              <div className="p-2 bg-gray-50 rounded-xl">
-                <Clock className="w-5 h-5 text-gray-400" />
-              </div>
-            </div>
-            <div className="grid grid-cols-25 gap-1">
-              <div className="h-4"></div>
-              {Array.from({ length: 24 }).map((_, i) => (
-                <div key={i} className="text-[8px] text-gray-400 text-center">{i}h</div>
-              ))}
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, dIdx) => (
-                <React.Fragment key={day}>
-                  <div className="text-[8px] text-gray-400 flex items-center">{day}</div>
-                  {heatmapData[dIdx].map((val, hIdx) => (
-                    <div 
-                      key={hIdx} 
-                      className="h-4 rounded-sm transition-all hover:scale-125 cursor-pointer"
-                      style={{ 
-                        backgroundColor: val === 0 ? '#f9fafb' : `rgba(79, 70, 229, ${Math.min(val / 10, 1)})` 
-                      }}
-                      title={`${day} ${hIdx}:00 - ${val} interactions`}
-                    />
-                  ))}
-                </React.Fragment>
-              ))}
-            </div>
-          </div>
-
-          {/* Segment Distribution */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-apple-card border border-white/60 animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">Segment Distribution</h3>
-                <p className="text-xs text-gray-500">User role & experience breakdown</p>
-              </div>
-              <div className="p-2 bg-gray-50 rounded-xl">
-                <PieChartIcon className="w-5 h-5 text-gray-400" />
-              </div>
-            </div>
-            <div className="h-80 flex items-center">
-              <div className="flex-1 h-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={activeView === 'overview' ? filteredData.roleDistribution : activeView === 'jobseekers' ? [
-                        { name: 'Junior', value: filteredData.filteredUsers.filter(u => u.role === 'jobseeker' && (parseInt(u.experience || '0') < 3)).length },
-                        { name: 'Mid', value: filteredData.filteredUsers.filter(u => u.role === 'jobseeker' && (parseInt(u.experience || '0') >= 3 && parseInt(u.experience || '0') < 7)).length },
-                        { name: 'Senior', value: filteredData.filteredUsers.filter(u => u.role === 'jobseeker' && (parseInt(u.experience || '0') >= 7)).length },
-                      ] : [
-                        { name: 'Corporate', value: filteredData.filteredUsers.filter(u => u.role === 'recruiter').length * 0.7 },
-                        { name: 'Agency', value: filteredData.filteredUsers.filter(u => u.role === 'recruiter').length * 0.3 },
-                      ]}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {(activeView === 'overview' ? filteredData.roleDistribution : [{},{},{}]).map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={['#4f46e5', '#10b981', '#f59e0b', '#ef4444'][index % 4]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="w-40 space-y-3">
-                {(activeView === 'overview' ? filteredData.roleDistribution : activeView === 'jobseekers' ? [
-                  { name: 'Junior', value: filteredData.filteredUsers.filter(u => u.role === 'jobseeker' && (parseInt(u.experience || '0') < 3)).length },
-                  { name: 'Mid', value: filteredData.filteredUsers.filter(u => u.role === 'jobseeker' && (parseInt(u.experience || '0') >= 3 && parseInt(u.experience || '0') < 7)).length },
-                  { name: 'Senior', value: filteredData.filteredUsers.filter(u => u.role === 'jobseeker' && (parseInt(u.experience || '0') >= 7)).length },
-                ] : [
-                  { name: 'Corporate', value: filteredData.filteredUsers.filter(u => u.role === 'recruiter').length * 0.7 },
-                  { name: 'Agency', value: filteredData.filteredUsers.filter(u => u.role === 'recruiter').length * 0.3 },
-                ]).map((entry, index) => (
-                  <div key={entry.name} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444'][index % 4] }}></div>
-                    <div className="flex-1">
-                      <div className="text-[10px] font-bold text-gray-900 leading-none">{entry.name}</div>
-                      <div className="text-[9px] text-gray-400">{entry.value} users</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Overview Intelligent Usage Records */}
-        {activeView === 'overview' && (
-          <div className="bg-white rounded-[2.5rem] shadow-apple-card border border-white/60 overflow-hidden mb-10">
-            <div className="p-8 border-b border-gray-100 flex justify-between items-center">
-              <div className="flex items-center gap-6">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Intelligent Usage Logs</h3>
-                  <p className="text-xs text-gray-500">Real-time tracking of every AI interaction</p>
-                </div>
-                <div className="h-10 w-px bg-gray-100"></div>
-                <div className="flex items-center gap-2">
-                  <Filter className="w-3 h-3 text-gray-400" />
-                  <div className="flex gap-1">
-                    {(['all', 'resume', 'interview', 'recruiter_scan'] as const).map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => setUsageTypeFilter(type)}
-                        className={`px-3 py-1 rounded-lg text-[10px] font-bold capitalize transition-all ${
-                          usageTypeFilter === type 
-                            ? 'bg-indigo-600 text-white' 
-                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
-                        }`}
-                      >
-                        {type.replace('_', ' ')}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  onClick={fetchAllData}
-                  className="p-2 hover:bg-gray-100 rounded-full text-gray-400 transition-colors"
-                  title="Refresh Data"
-                >
-                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
-              <div className="text-right">
-                <div className="text-[10px] font-bold text-gray-400 uppercase">Total Interactions</div>
-                <div className="text-xl font-black text-indigo-600">
-                  {filteredData.filteredUsage.length}
-                </div>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-50/50 border-b border-gray-100">
-                    <th className="p-5 pl-8 text-[10px] font-bold text-gray-400 uppercase tracking-widest">User</th>
-                    <th className="p-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type</th>
-                    <th className="p-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tokens</th>
-                    <th className="p-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Cost (USD)</th>
-                    <th className="p-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Cost (INR)</th>
-                    <th className="p-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Time</th>
-                    <th className="p-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right pr-8">Timestamp</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredData.filteredUsage.slice((usagePage - 1) * itemsPerPage, usagePage * itemsPerPage).map((record) => (
-                    <tr key={record.id} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="p-5 pl-8">
-                        <div className="font-bold text-gray-900">{record.userName}</div>
-                        <div className="text-[10px] text-gray-400 font-mono">{record.userId.substring(0, 8)}...</div>
-                      </td>
-                      <td className="p-5">
-                        <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${
-                          record.type === 'resume' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
-                        }`}>
-                          {record.type}
-                        </span>
-                      </td>
-                      <td className="p-5 font-bold text-gray-700">{record.tokens.toLocaleString()}</td>
-                      <td className="p-5 font-bold text-emerald-600">${record.costUSD.toFixed(4)}</td>
-                      <td className="p-5 font-bold text-amber-600">₹{(record.costUSD * USD_TO_INR).toFixed(2)}</td>
-                      <td className="p-5 text-gray-500 text-sm">{record.processingTime}s</td>
-                      <td className="p-5 text-right pr-8 text-xs text-gray-400">
-                        {new Date(record.timestamp).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <Pagination 
-                currentPage={usagePage} 
-                totalItems={filteredData.filteredUsage.length} 
-                onPageChange={setUsagePage} 
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Overview Users Table */}
-        {activeView === 'overview' && (
-          <div className="bg-white rounded-[2.5rem] shadow-apple-card border border-white/60 overflow-hidden">
-            <div className="p-8 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">User Management</h2>
-                <p className="text-xs text-gray-500 mt-1">{finalFilteredUsers.length} Total Records</p>
-              </div>
-              
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input 
-                  type="text"
-                  placeholder="Search users..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
-                />
-              </div>
-            </div>
-            <UserTable 
-              users={finalFilteredUsers.slice((usersPage - 1) * itemsPerPage, usersPage * itemsPerPage)} 
-              onSelect={setSelectedUser} 
-            />
+          
+          <UserTable 
+            users={finalFilteredUsers.slice((usersPage - 1) * itemsPerPage, usersPage * itemsPerPage)} 
+            onSelect={setSelectedUser}
+            showRole={activeView === 'overview'}
+          />
+          
+          <div className="p-8 bg-gray-50/30 border-t border-gray-50">
             <Pagination 
               currentPage={usersPage} 
               totalItems={finalFilteredUsers.length} 
               onPageChange={setUsersPage} 
             />
           </div>
-        )}
+        </div>
       </main>
     </div>
   );
